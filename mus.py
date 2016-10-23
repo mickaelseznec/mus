@@ -81,7 +81,7 @@ class PlayerHolder:
 
     def add(self, player_id, player_name, team_number):
         if player_id in self:
-            self[player_id].team = team_number
+            self[player_id].team_number = team_number
         else:
             self.players.append(Player(player_id, player_name, team_number))
 
@@ -178,11 +178,9 @@ class Waiting(GameState):
     def handle(self, action, player_id, *args):
         if action == "add_player":
             if (len(args) != 2 and
-                    not isinstance(args[0], str) and
-                    not isinstance(args[1], int) and
-                    not 0 <= args[1] <= 1):
+                    not 0 <= int(args[1]) <= 1):
                 raise ForbiddenActionException
-            self.players.add(player_id, args[0], args[1])
+            self.players.add(player_id, args[0], int(args[1]))
             return "Waiting"
         elif action == "remove_player":
             self.players.remove(player_id)
@@ -194,7 +192,7 @@ class Waiting(GameState):
 
     def clean_up(self):
         for player in self.players:
-            player.cards = self.packet.take(4)
+            player.cards = sorted(self.packet.take(4))
 
 
 class Speaking(GameState):
@@ -238,15 +236,19 @@ class Trading(GameState):
                 return "Speaking"
             return "Trading"
         else:
-            if len(args) != 1 or not isinstance(args[0], int) or not 0 <= args[0] <= 4:
+            if len(args) != 1 or not 0 <= int(args[0]) <= 3:
                 raise ForbiddenActionException
-            self.players[player_id].asks.add(args[0])
+            self.players[player_id].asks.add(int(args[0]))
             return "Trading"
 
     def prepare(self):
         for player in self.players:
             player.said = ""
             player.asks = set()
+
+    def clean_up(self):
+        for player in self.players:
+            player.cards.sort()
 
 
 class Game:
@@ -269,6 +271,7 @@ class Game:
         return len(self.players.by_team(team_number)) < 2
 
     def action(self, action, player_id, *args):
+        print("Received action '" + action +"' from ", player_id, "with args: ", *args)
         next_state = self.states[self.current].run(action, player_id, *args)
         if next_state != self.current:
             self.states[self.current].clean_up()

@@ -15,41 +15,47 @@ class TestInitialMus(unittest.TestCase):
         self.assertEqual(mus.Team.other_team(1), 0)
 
     def test_add_player(self):
-        self.game.action("add_player", *self.christophe, 1)
+        self.game.action("add_player", *self.christophe, "1")
         self.assertTrue(self.christophe[0] in self.game.players)
 
     def test_add_multiple_player(self):
-        self.game.action("add_player", *self.christophe, 1)
-        self.game.action("add_player", *self.christophe, 1)
+        self.game.action("add_player", *self.christophe, "1")
+        self.game.action("add_player", *self.christophe, "1")
         self.assertEqual(len(self.game.players.by_team(1)), 1)
 
     def test_remove_player(self):
-        self.game.action("add_player", *self.christophe, 1)
+        self.game.action("add_player", *self.christophe, "1")
         self.game.action("remove_player", self.christophe[0])
         self.assertTrue(self.christophe not in self.game.players)
+
+    def test_change_team(self):
+        self.game.action("add_player", *self.christophe, "1")
+        self.game.action("add_player", *self.christophe, "0")
+        self.assertTrue(self.christophe[0] in [p.id for p in self.game.players.by_team(0)])
+        self.assertFalse(self.christophe[0] in [p.id for p in self.game.players.by_team(1)])
 
     def test_can_join_team(self):
         self.assertTrue(self.game.can_join_team(0))
         self.assertTrue(self.game.can_join_team(1))
-        self.game.action("add_player", *self.christophe, 0)
-        self.game.action("add_player", *self.gerard, 0)
+        self.game.action("add_player", *self.christophe, "0")
+        self.game.action("add_player", *self.gerard, "0")
         self.assertFalse(self.game.can_join_team(0))
         self.assertTrue(self.game.can_join_team(1))
 
     def test_can_start(self):
         self.assertFalse("start" in self.game.state.actions_authorised())
-        self.game.action("add_player", *self.christophe, 0)
-        self.game.action("add_player", *self.gerard, 1)
+        self.game.action("add_player", *self.christophe, "0")
+        self.game.action("add_player", *self.gerard, "1")
         self.assertTrue("start" in self.game.state.actions_authorised())
-        self.game.action("add_player", *self.thierry, 1)
+        self.game.action("add_player", *self.thierry, "1")
         self.assertFalse("start" in self.game.state.actions_authorised())
-        self.game.action("add_player", *self.michel, 0)
+        self.game.action("add_player", *self.michel, "0")
         self.assertTrue("start" in self.game.state.actions_authorised())
 
     def test_is_started(self):
         self.assertEqual(self.game.current, "Waiting")
-        self.game.action("add_player", *self.christophe, 0)
-        self.game.action("add_player", *self.gerard, 1)
+        self.game.action("add_player", *self.christophe, "0")
+        self.game.action("add_player", *self.gerard, "1")
         self.game.action("start", self.gerard[0])
         self.assertNotEqual(self.game.current, "Waiting")
 
@@ -59,8 +65,8 @@ class TestTwoPlayerMus(unittest.TestCase):
         self.game = mus.Game(0)
         self.christophe = 1
         self.gerard = 2
-        self.game.action("add_player", 1, "Christophe", 0)
-        self.game.action("add_player", 2, "Gerard", 1)
+        self.game.action("add_player", 1, "Christophe", "0")
+        self.game.action("add_player", 2, "Gerard", "1")
         self.game.action("start", self.christophe)
 
     def test_card_distribution(self):
@@ -83,8 +89,8 @@ class TestTwoPlayerMus(unittest.TestCase):
 
         old_gerard_cards = self.game.players[self.gerard].get_cards().copy()
         old_christophe_cards = self.game.players[self.christophe].get_cards().copy()
-        self.game.action("change", self.christophe, 2)
-        self.game.action("change", self.christophe, 3)
+        self.game.action("change", self.christophe, "2")
+        self.game.action("change", self.christophe, "3")
         self.game.action("confirm", self.christophe)
         self.game.action("confirm", self.gerard)
 
@@ -102,13 +108,13 @@ class TestTwoPlayerMus(unittest.TestCase):
         for _ in range(50):
             self.game.action("mus", self.christophe)
             self.game.action("mus", self.gerard)
-            self.game.action("change", self.christophe, 0)
-            self.game.action("change", self.christophe, 1)
-            self.game.action("change", self.christophe, 2)
-            self.game.action("change", self.christophe, 3)
-            self.game.action("change", self.gerard, 0)
-            self.game.action("change", self.gerard, 1)
-            self.game.action("change", self.gerard, 2)
+            self.game.action("change", self.christophe, "0")
+            self.game.action("change", self.christophe, "1")
+            self.game.action("change", self.christophe, "2")
+            self.game.action("change", self.christophe, "3")
+            self.game.action("change", self.gerard, "0")
+            self.game.action("change", self.gerard, "1")
+            self.game.action("change", self.gerard, "2")
 
             old_gerard_cards = self.game.players[self.gerard].get_cards().copy()
             old_christophe_cards = self.game.players[self.christophe].get_cards().copy()
