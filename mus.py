@@ -1,7 +1,15 @@
 import random
 
-class Card():
-    COLORS = ["copas", "espadas", "bastos", "oros"]
+class ForbiddenActionException(Exception):
+    pass
+
+
+class WrongPlayerException(ForbiddenActionException):
+    pass
+
+
+class Card:
+    COLORS = ["Copas", "Espadas", "Bastos", "Oros"]
     VALUES = [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]
 
     def __init__(self, index):
@@ -14,7 +22,7 @@ class Card():
     def __str__(self):
         return str(self.value) + '-' + self.color
 
-class Packet():
+class Packet:
     CARDS = [Card(i) for i in range(len(Card.COLORS) * len(Card.VALUES))]
 
     def __init__(self):
@@ -46,12 +54,15 @@ class Packet():
         return self.take(1)
 
 
-class Player():
-    def __init__(self, player_id, player_name):
+class Player:
+    def __init__(self, player_id, player_name, team_number):
         self.id = player_id
         self.name = player_name
-        self.cards = None
-        self.asks = []
+        self.team_number = team_number
+        self.is_authorised = False
+        self.said = ""
+        self.cards = []
+        self.asks = set()
 
     def get_cards(self):
         return self.cards
@@ -63,9 +74,53 @@ class Player():
         return self.id == other.id
 
 
-class Team():
+class PlayerHolder:
     def __init__(self):
+        self.teams = (Team(), Team())
         self.players = []
+
+    def add(self, player_id, player_name, team_number):
+        if player_id in self:
+            self[player_id].team = team_number
+        else:
+            self.players.append(Player(player_id, player_name, team_number))
+
+    def remove(self, player_id):
+        for i, player in enumerate(self.players):
+            if player.id == player_id:
+                self.players.pop(i)
+
+    def get_player_team(self, player_id):
+        return self.teams[self[player_id].team_number]
+
+    def authorised(self):
+        return [player.id for player in self.players if player.is_authorised]
+
+    def authorise_team(self, team_number):
+        for player in self.players:
+            player.is_authorised = (player.team_number == team_number)
+
+    def by_team(self, team_number):
+        return [player for player in self.players if player.team_number == team_number]
+
+    def can_start(self):
+        return len(self.by_team(0)) == len(self.by_team(1)) and (
+            len(self.by_team(0)) == 1 or len(self.by_team(0)) == 2)
+
+    def __iter__(self):
+        return iter(self.players)
+
+    def __contains__(self, player_id):
+        return player_id in [player.id for player in self.players]
+
+    def __getitem__(self, player_id):
+        for player in self.players:
+            if player.id == player_id:
+                return player
+        raise IndexError
+
+class Team:
+    def __init__(self):
         self.score = 0
         self.said = ""
 
@@ -73,124 +128,149 @@ class Team():
     def other_team(cls, team_number):
         return (team_number + 1) % 2
 
-    def add_player(self, new_player):
-        self.players.append(new_player)
 
-    def remove_player(self, player):
-        self.players.remove(player)
+class GameState:
+    def __init__(self, players, packet):
+        self.players = players
+        self.packet = packet
+        self.actions = []
 
-    def get(self, player):
-        return self.players[self.players.index(player)]
+    def actions_authorised(self):
+        return self.actions
 
-    def __len__(self):
-        return len(self.players)
+    def players_authorised(self):
+        return self.players.authorised()
 
-    def __contains__(self, player):
-        return player in self.players
+    def is_player_authorised(self, player_id):
+        return player_id in self.players_authorised()
+
+    def handle(self, action, player_id, *args):
+        raise NotImplementedError
+
+    def run(self, action, player_id, *args):
+        if action not in self.actions_authorised():
+            raise ForbiddenActionException
+        if not self.is_player_authorised(player_id):
+            raise WrongPlayerException
+        return self.handle(action, player_id, *args)
+
+    def prepare(self):
+        pass
+
+    def clean_up(self):
+        pass
 
 
-class Turn():
-    TURNS = ["Truke", "Handiak", "Txikiak", "Pareak", "Jokoa"]
-    SUBTURNS = ["Speak", "Cards"]
-    def __init__(self, teams):
-        self.current = self.TURNS[0]
-        self.sub_current = self.SUBTURNS[0]
-        self.packet = Packet()
-        self.teams = teams
-        self.current_team = 0
-        self.bet = 0
-        self.proposal = 0
-        self.distribute_cards()
+class Waiting(GameState):
+    def __init__(self, players, packet):
+        super().__init__(players, packet)
+        self.actions = ["add_player", "remove_player", "start"]
 
-    def next(self):
-        self.current_team = Team.other_team(self.current_team)
-        self.current = Turn.TURNS[Turn.TURNS.index(self.current) + 1]
+    def actions_authorised(self):
+        actions = ["add_player", "remove_player"]
+        if self.players.can_start():
+            actions.append("start")
+        return actions
 
-    def distribute_cards(self):
-        for team in self.teams:
-            for player in team.players:
-                player.cards = self.packet.take(4)
+    def is_player_authorised(self, player_id):
+        return True
 
-    def next_sub(self):
-        if self.sub_current == "Speak":
-            for team in self.teams:
-                for player in team.players:
-                    player.ready = False
-                    player.asks = set()
-            self.sub_current = Turn.SUBTURNS[1]
-        elif self.sub_current == "Cards":
-            for team in self.teams:
-                team.said = ""
-                for player in team.players:
+    def handle(self, action, player_id, *args):
+        if action == "add_player":
+            if (len(args) != 2 and
+                    not isinstance(args[0], str) and
+                    not isinstance(args[1], int) and
+                    not 0 <= args[1] <= 1):
+                raise ForbiddenActionException
+            self.players.add(player_id, args[0], args[1])
+            return "Waiting"
+        elif action == "remove_player":
+            self.players.remove(player_id)
+            return "Waiting"
+        elif action == "start":
+            if not self.players.can_start:
+                raise ForbiddenActionException
+            return "Speaking"
+
+    def clean_up(self):
+        for player in self.players:
+            player.cards = self.packet.take(4)
+
+
+class Speaking(GameState):
+    def __init__(self, players, packet):
+        super().__init__(players, packet)
+        self.actions = ["mus", "minsa"]
+
+    def handle(self, action, player_id, *args):
+        if action == "mus":
+            self.players.get_player_team(player_id).said = "mus"
+            if all(team.said == "mus" for team in self.players.teams):
+                return "Trading"
+            self.players.authorise_team(1)
+            return "Speaking"
+        elif action == "minsa":
+            return "Handiak"
+
+    def prepare(self):
+        self.players.authorise_team(0)
+
+    def clean_up(self):
+        for team in self.players.teams:
+            team.said = ""
+
+
+class Trading(GameState):
+    def __init__(self, players, packet):
+        super().__init__(players, packet)
+        self.actions = ["change", "confirm"]
+
+    def is_player_authorised(self, player_id):
+        return True
+
+    def handle(self, action, player_id, *args):
+        if action == "confirm":
+            self.players[player_id].said = "confirm"
+            if all(player.said == "confirm" for player in self.players):
+                for player in self.players:
                     for i in list(player.asks):
                         player.cards[i] = self.packet.trade(player.cards[i])[0]
-            self.sub_current = Turn.SUBTURNS[0]
-            self.current_team = 0
+                return "Speaking"
+            return "Trading"
+        else:
+            if len(args) != 1 or not isinstance(args[0], int) or not 0 <= args[0] <= 4:
+                raise ForbiddenActionException
+            self.players[player_id].asks.add(args[0])
+            return "Trading"
+
+    def prepare(self):
+        for player in self.players:
+            player.said = ""
+            player.asks = set()
 
 
-class Game():
+class Game:
     def __init__(self, game_id):
         self.game_id = game_id
-        self.teams = (Team(), Team())
-        self.players_per_team = 0
-        self.turn = None
-        self.is_started = False
-        self.is_finished = False
+        self.players = PlayerHolder()
+        self.packet = Packet()
+        self.states = {
+            "Waiting": Waiting(self.players, self.packet),
+            "Speaking": Speaking(self.players, self.packet),
+            "Trading": Trading(self.players, self.packet),
+        }
+        self.current = "Waiting"
 
-    def __contains__(self, player):
-        return any(player in team for team in self.teams)
-
-    def add_player(self, player, team_number):
-        assert not self.is_started
-        if player in self.teams[Team.other_team(team_number)]:
-            self.teams[Team.other_team(team_number)].remove_player(player)
-        if player not in self.teams[team_number]:
-            self.teams[team_number].add_player(player)
-
-    def remove_player(self, player):
-        assert not self.is_started
-        for team in self.teams:
-            if player in team:
-                team.remove_player(player)
-
-    def can_start(self):
-        return len(self.teams[0]) == len(self.teams[1]) and (
-            len(self.teams[0]) == 1 or len(self.teams[0]) == 2)
+    @property
+    def state(self):
+        return self.states[self.current]
 
     def can_join_team(self, team_number):
-        return len(self.teams[team_number]) < 2
+        return len(self.players.by_team(team_number)) < 2
 
-    def start(self):
-        self.is_started = True
-        self.players_per_team = len(self.teams[0])
-        self.begin_set()
-
-    def begin_set(self):
-        self.turn = Turn(self.teams)
-
-    def get_player(self, player):
-        for team in self.teams:
-            if player in team:
-                return team.get(player)
-
-    def play(self, play, player):
-        if self.turn.current == Turn.TURNS[0]:
-            if self.turn.sub_current == Turn.SUBTURNS[0]:
-                assert player in self.teams[self.turn.current_team]
-                assert play == "Mus" or play == "Minsa"
-                self.teams[self.turn.current_team].said = play
-                if play == "Minsa":
-                    self.turn.next()
-                elif all(team.said == "Mus" for team in self.teams):
-                    self.turn.next_sub()
-                else:
-                    self.turn.current_team = Team.other_team(self.turn.current_team)
-            elif self.turn.sub_current == Turn.SUBTURNS[1]:
-                assert play == "Ready" or int(play) >= 0 and int(play) <= 3
-                own_player = self.get_player(player)
-                if play == "Ready":
-                    own_player.ready = True
-                else:
-                    own_player.asks.add(int(play))
-                if all(player.ready for team in self.teams for player in team.players):
-                    self.turn.next_sub()
+    def action(self, action, player_id, *args):
+        next_state = self.states[self.current].run(action, player_id, *args)
+        if next_state != self.current:
+            self.states[self.current].clean_up()
+            self.current = next_state
+            self.states[self.current].prepare()
