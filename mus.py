@@ -123,7 +123,7 @@ class Turn():
                 team.said = ""
                 for player in team.players:
                     for i in list(player.asks):
-                        player.cards[i] = self.packet.trade(player.cards[i])
+                        player.cards[i] = self.packet.trade(player.cards[i])[0]
             self.sub_current = Turn.SUBTURNS[0]
             self.current_team = 0
 
