@@ -42,7 +42,6 @@ class Packet:
             self.unused_cards = self.unused_cards[n:]
             return taken
         else:
-            #import ipdb; ipdb.set_trace()
             taken = self.unused_cards
             self.new_packet()
             taken.append(self.unused_cards[0:-delta])
@@ -78,6 +77,9 @@ class PlayerHolder:
     def __init__(self):
         self.teams = (Team(), Team())
         self.players = []
+        self.echku = 0
+        self.authorised_team = 0
+        self.authorised_player = 0
 
     def add(self, player_id, player_name, team_number):
         if player_id in self:
@@ -96,9 +98,25 @@ class PlayerHolder:
     def authorised(self):
         return [player.id for player in self.players if player.is_authorised]
 
-    def authorise_team(self, team_number):
+    def authorise_player(self, player_id=None):
+        if player_id is None:
+            player_id = self.player[self.echku].id
+        self.authorised_player = player_id
+        for player in self.players:
+            player.is_authorised (player.id == player_id)
+
+    def authorise_next_player(self):
+        self.authorise_player((self.authorised_player + 1) % len(self.players))
+
+    def authorise_team(self, team_number=None):
+        if team_number is None:
+            team_number = self.players[self.echku].team_number
+        self.authorised_team = team_number
         for player in self.players:
             player.is_authorised = (player.team_number == team_number)
+
+    def authorise_next_team(self):
+        self.authorise_team(Team.other_team(self.authorised_team))
 
     def by_team(self, team_number):
         return [player for player in self.players if player.team_number == team_number]
@@ -106,6 +124,20 @@ class PlayerHolder:
     def can_start(self):
         return len(self.by_team(0)) == len(self.by_team(1)) and (
             len(self.by_team(0)) == 1 or len(self.by_team(0)) == 2)
+
+    def sort(self):
+        if len(self.players) == 2:
+            return
+        for i in range(len(self.players) - 1):
+            if self.players[i].team_number == self.players[i + 1].team_number:
+                self.players[i], self.players[i + 1] = self.players[i + 1], self.players[i]
+
+    def set_echku(self, n=None):
+        if n is not None:
+            self.echku = n
+        else:
+            self.echku = (self.echku + 1) % len(self.players)
+
 
     def __iter__(self):
         return iter(self.players)
@@ -193,6 +225,8 @@ class Waiting(GameState):
     def clean_up(self):
         for player in self.players:
             player.cards = sorted(self.packet.take(4))
+        self.players.sort()
+        self.players.set_echku(0)
 
 
 class Speaking(GameState):
@@ -205,13 +239,13 @@ class Speaking(GameState):
             self.players.get_player_team(player_id).said = "mus"
             if all(team.said == "mus" for team in self.players.teams):
                 return "Trading"
-            self.players.authorise_team(1)
+            self.players.authorise_next_team()
             return "Speaking"
         elif action == "minsa":
             return "Handiak"
 
     def prepare(self):
-        self.players.authorise_team(0)
+        self.players.authorise_team()
 
     def clean_up(self):
         for team in self.players.teams:

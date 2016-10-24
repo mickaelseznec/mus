@@ -59,7 +59,7 @@ class TestInitialMus(unittest.TestCase):
         self.game.action("start", self.gerard[0])
         self.assertNotEqual(self.game.current, "Waiting")
 
-class TestTwoPlayerMus(unittest.TestCase):
+class TestTwoPlayerSpeakTrade(unittest.TestCase):
 
     def setUp(self):
         self.game = mus.Game(0)
@@ -99,10 +99,10 @@ class TestTwoPlayerMus(unittest.TestCase):
 
         self.assertEqual(old_gerard_cards, new_gerard_cards)
 
-        self.assertEqual(old_christophe_cards[0], new_christophe_cards[0])
-        self.assertEqual(old_christophe_cards[1], new_christophe_cards[1])
-        self.assertNotEqual(old_christophe_cards[2], new_christophe_cards[2])
-        self.assertNotEqual(old_christophe_cards[3], new_christophe_cards[3])
+        self.assertTrue(old_christophe_cards[0] in new_christophe_cards)
+        self.assertTrue(old_christophe_cards[1] in new_christophe_cards)
+        self.assertFalse(old_christophe_cards[2] in new_christophe_cards)
+        self.assertFalse(old_christophe_cards[3] in new_christophe_cards)
 
     def test_empy_card_packet(self):
         for _ in range(50):
@@ -118,16 +118,19 @@ class TestTwoPlayerMus(unittest.TestCase):
 
             old_gerard_cards = self.game.players[self.gerard].get_cards().copy()
             old_christophe_cards = self.game.players[self.christophe].get_cards().copy()
+            overflow = len(self.game.packet.unused_cards) < 7
             self.game.action("confirm", self.christophe)
             self.game.action("confirm", self.gerard)
             new_gerard_cards = self.game.players[self.gerard].get_cards().copy()
             new_christophe_cards = self.game.players[self.christophe].get_cards().copy()
 
-            for j in range(4):
-                self.assertNotEqual(old_christophe_cards[j], new_christophe_cards[j])
-            for j in range(3):
-                self.assertNotEqual(old_gerard_cards[j], new_gerard_cards[j])
-            self.assertEqual(old_gerard_cards[3], new_gerard_cards[3])
+            # Don't check if cards are not in hand again in case of overflow, you could draw the same
+            if not overflow:
+                for j in range(4):
+                    self.assertFalse(old_christophe_cards[j] in new_christophe_cards)
+                for j in range(3):
+                    self.assertFalse(old_gerard_cards[j] in new_gerard_cards)
+            self.assertTrue(old_gerard_cards[3] in new_gerard_cards)
 
 
 if __name__ == '__main__':
