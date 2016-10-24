@@ -1,4 +1,5 @@
 import random
+from functools import total_ordering
 
 class ForbiddenActionException(Exception):
     pass
@@ -8,19 +9,44 @@ class WrongPlayerException(ForbiddenActionException):
     pass
 
 
+@total_ordering
 class Card:
     COLORS = ["Copas", "Espadas", "Bastos", "Oros"]
     VALUES = [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]
 
-    def __init__(self, index):
-        self.value = Card.VALUES[int(index / len(Card.COLORS))]
-        self.color = Card.COLORS[index % len(Card.COLORS)]
+    def __init__(self, index=None, value=None, color=None):
+        if index is not None:
+            self.value = Card.VALUES[int(index / len(Card.COLORS))]
+            self.color = Card.COLORS[index % len(Card.COLORS)]
+        else:
+            if value not in Card.VALUES or color not in Card.COLORS:
+                raise ForbiddenActionException
+            self.value = value
+            self.color = color
+
+    @classmethod
+    def has_hand(cls, cards):
+        values = [card.value for card in cards]
+        counter = [values.count(value) for value in set(values)]
+        if any(count >= 2 for count in counter):
+            return True
+        return False
+
+    @classmethod
+    def has_game(cls, cards):
+        return sum(min(card.value, 10) for card in cards) >= 30
 
     def index(self):
         return Card.COLORS.index(self.color) + len(Card.COLORS) * Card.VALUES.index(self.value)
 
     def __str__(self):
-        return str(self.value) + '-' + self.color
+        return str(self.value) + ' - ' + self.color
+
+    def __eq__(self, card):
+        return self.index() == card.index()
+
+    def __lt__(self, card):
+        return self.index() < card.index()
 
 class Packet:
     CARDS = [Card(i) for i in range(len(Card.COLORS) * len(Card.VALUES))]
@@ -40,16 +66,16 @@ class Packet:
         if delta > 0:
             taken = self.unused_cards[0: n]
             self.unused_cards = self.unused_cards[n:]
-            return taken
+            return [Card(index) for index in taken]
         else:
             taken = self.unused_cards
             self.new_packet()
-            taken.append(self.unused_cards[0:-delta])
+            taken += self.unused_cards[0:-delta]
             self.unused_cards = self.unused_cards[-delta:]
-            return taken
+            return [Card(index) for index in taken]
 
     def trade(self, card):
-        self.used_cards.append(card)
+        self.used_cards.append(card.index())
         return self.take(1)
 
 
@@ -62,6 +88,8 @@ class Player:
         self.said = ""
         self.cards = []
         self.asks = set()
+        self.has_game = False
+        self.has_hand = False
 
     def get_cards(self):
         return self.cards
@@ -95,15 +123,19 @@ class PlayerHolder:
     def get_player_team(self, player_id):
         return self.teams[self[player_id].team_number]
 
+    def get_player_opposite_team(self, player_id):
+        return self.teams[Team.other_team(self[player_id].team_number)]
+
     def authorised(self):
         return [player.id for player in self.players if player.is_authorised]
 
-    def authorise_player(self, player_id=None):
-        if player_id is None:
-            player_id = self.player[self.echku].id
-        self.authorised_player = player_id
-        for player in self.players:
-            player.is_authorised (player.id == player_id)
+    def authorise_player(self, index=None):
+        if index is None:
+            self.authorised_player = self.echku
+        else:
+            self.authorised_player = index
+        for i, player in enumerate(self.players):
+            player.is_authorised = (i == self.authorised_player)
 
     def authorise_next_player(self):
         self.authorise_player((self.authorised_player + 1) % len(self.players))
@@ -114,6 +146,9 @@ class PlayerHolder:
         self.authorised_team = team_number
         for player in self.players:
             player.is_authorised = (player.team_number == team_number)
+
+    def authorise_opposite_team(self, player_id):
+        self.authorise_team(Team.other_team(self[player_id].team_number))
 
     def authorise_next_team(self):
         self.authorise_team(Team.other_team(self.authorised_team))
@@ -232,7 +267,7 @@ class Waiting(GameState):
 class Speaking(GameState):
     def __init__(self, players, packet):
         super().__init__(players, packet)
-        self.actions = ["mus", "minsa"]
+        self.actions = ["mus", "mintza"]
 
     def handle(self, action, player_id, *args):
         if action == "mus":
@@ -241,8 +276,8 @@ class Speaking(GameState):
                 return "Trading"
             self.players.authorise_next_team()
             return "Speaking"
-        elif action == "minsa":
-            return "Handiak"
+        elif action == "mintza":
+            return "Haundia"
 
     def prepare(self):
         self.players.authorise_team()
@@ -285,7 +320,208 @@ class Trading(GameState):
             player.cards.sort()
 
 
+class BetState(GameState):
+    own_state = ""
+    next_state = ""
+
+    def __init__(self, players, packet):
+        super().__init__(players, packet)
+        self.actions = ["paso", "imido", "tira", "gehiago", "hor_dago", "kanta", "idoki", "ok"]
+        self.bet = 0
+        self.deffered = True
+        self.engaged = False
+        self.hor_daged = False
+        self.proposal = 0
+
+    def add_points(self):
+        raise NotImplementedError
+
+    def actions_authorised(self):
+        actions = []
+        if self.hor_daged:
+            actions += "kanta", "tira"
+        else:
+            actions += "gehiago", "hor_dago"
+            if not self.engaged:
+                actions += "paso", "imido"
+            else:
+                actions += "tira", "idoki"
+        return actions
+
+    def prepare(self):
+        self.players.authorise_player()
+        self.bet = 1
+        self.deffered = True
+        self.engaged = False
+        self.hor_daged = False
+        self.proposal = 0
+
+    def authorise_next_player(self):
+        self.players.authorise_next_player()
+
+    def authorise_opposite_team(self, player_id):
+        self.players.authorise_opposite_team(player_id)
+
+    def everybody_is_mus(self):
+        return self.players.authorised_player == self.players.echku
+
+    def handle(self, action, player_id, *args):
+        if action == "paso":
+            self.authorise_next_player()
+            if self.everybody_is_mus():
+                self.deffered = True
+                return self.next_state
+            return self.own_state
+        elif action == "imido":
+            self.proposal = 1
+            self.engaged = True
+            self.authorise_opposite_team(player_id)
+            return self.own_state
+        elif action == "gehiago":
+            proposal = int(args[0])
+            if proposal <= 0 or not self.engaged and proposal == 1:
+                raise ForbiddenActionException
+            if not self.engaged:
+                proposal -= 1
+            self.bet += self.proposal
+            self.proposal = proposal
+            if not self.engaged:
+                self.engaged = True
+            self.authorise_opposite_team(player_id)
+            return self.own_state
+        elif action == "hor_dago":
+            self.hor_daged = True
+            self.deffered = False
+            self.authorise_opposite_team(player_id)
+            return self.own_state
+        elif action == "tira":
+            self.deffered = False
+            self.players.get_player_opposite_team(player_id).score += self.bet
+            if self.players.get_player_opposite_team(player_id).score >= Game.score_max:
+                return "Finished"
+            return self.next_state
+        elif action == "idoki":
+            self.bet += self.proposal
+            return self.next_state
+        elif action == "kanta":
+            self.deffered = False
+            return "Finished"
+
+
+class Haundia(BetState):
+    own_state = "Haundia"
+    next_state = "Tipia"
+
+    def add_points(self):
+        if self.deffered:
+            pass
+
+class Tipia(BetState):
+    own_state = "Tipia"
+    next_state = "Pariak"
+
+
+class Pariak(BetState):
+    own_state = "Pariak"
+    next_state = "Jokua"
+
+    def __init__(self, players, packet):
+        super().__init__(players, packet)
+        self.no_bet = False
+
+    def is_player_authorised(self, player_id):
+        if self.no_bet:
+            return True
+        return self.players[player_id].has_hand and super().is_player_authorised(player_id)
+
+    def actions_authorised(self):
+        if self.no_bet:
+            return ['ok']
+        return super().actions_authorised()
+
+    def authorise_next_player(self):
+        self.players.authorise_next_player()
+        while not self.players.players[self.players.authorised_player].has_hand:
+            self.players.authorise_next_player()
+
+    def handle(self, action, player_id, *args):
+        if action == 'ok':
+            return self.next_state
+        return super().handle(action, player_id, *args)
+
+    def prepare(self):
+        super().prepare()
+        self.no_bet = False
+        self.bet = 1
+        for player in self.players:
+            player.has_hand = Card.has_hand(player.cards)
+        if not (any(player.has_hand for player in self.players.by_team(0)) and
+            any(player.has_hand for player in self.players.by_team(1))):
+            self.no_bet = True
+            self.bet = 0
+            self.deffered = False
+
+
+class Jokua(BetState):
+    own_state = "Jokua"
+    next_state = "Finished"
+
+    def __init__(self, players, packet):
+        super().__init__(players, packet)
+        self.no_bet = False
+        self.false_game = False
+
+    def is_player_authorised(self, player_id):
+        if self.no_bet:
+            return True
+        if not self.false_game:
+            return self.players[player_id].has_game and super().is_player_authorised(player_id)
+        return super().is_player_authorised(player_id)
+
+    def actions_authorised(self):
+        if self.no_bet:
+            return ['ok']
+        return super().actions_authorised()
+
+    def handle(self, action, player_id, *args):
+        if action == 'ok':
+            return self.next_state
+        return super().handle(action, player_id, *args)
+
+    def prepare(self):
+        super().prepare()
+        self.no_bet = False
+        self.false_game = False
+        for player in self.players:
+            player.has_game = Card.has_game(player.cards)
+        if any(player.has_game for player in self.players):
+            if not (any(player.has_game for player in self.players.by_team(0)) and
+                    any(player.has_game for player in self.players.by_team(1))):
+                self.no_bet = True
+                self.bet = 0
+                self.deffered = False
+        else:
+            self.false_game = True
+
+
+class Finished(GameState):
+    def __init__(self, players, packet, game):
+        super().__init__(players, packet)
+        self.actions = ["ok", "new_game"]
+        self.game = game
+
+    def prepare(self):
+        for state in Game.bet_states:
+            self.game.states[state].add_points()
+
+    def handle(self, action, player_id, *args):
+        return "Speaking"
+
+
 class Game:
+    score_max = 40
+    bet_states = ["Haundia", "Tipia", "Pariak", "Jokua"]
+
     def __init__(self, game_id):
         self.game_id = game_id
         self.players = PlayerHolder()
@@ -294,6 +530,11 @@ class Game:
             "Waiting": Waiting(self.players, self.packet),
             "Speaking": Speaking(self.players, self.packet),
             "Trading": Trading(self.players, self.packet),
+            "Haundia": Haundia(self.players, self.packet),
+            "Tipia": Tipia(self.players, self.packet),
+            "Pariak": Pariak(self.players, self.packet),
+            "Jokua": Jokua(self.players, self.packet),
+            "Finished": Finished(self.players, self.packet, self),
         }
         self.current = "Waiting"
 
@@ -305,7 +546,7 @@ class Game:
         return len(self.players.by_team(team_number)) < 2
 
     def action(self, action, player_id, *args):
-        print("Received action '" + action +"' from ", player_id, "with args: ", *args)
+        #print("Received action '" + action +"' from", player_id, "with args:", *args)
         next_state = self.states[self.current].run(action, player_id, *args)
         if next_state != self.current:
             self.states[self.current].clean_up()

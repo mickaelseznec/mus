@@ -105,8 +105,7 @@ class HordagoTelegramHandler:
 
         if query_data == 'show_cards':
             cards = game.players[from_id].get_cards()
-            cards.sort()
-            answer = "\n".join(str(i+1) + ": " + str(mus.Card(card)) for i, card in enumerate(cards))
+            answer = "\n".join("#" + str(i + 1) + ": " + str(card) for i, card in enumerate(cards))
             self.bot.answerCallbackQuery(query_id, text=answer, show_alert=True)
         else:
             try:
@@ -133,38 +132,86 @@ class HordagoTelegramHandler:
             msg += self.initial_greeting
             msg += "\n<b>Team 1:</b>\n" + "\n".join(player.name for player in game.players.by_team(0))
             msg += "\n<b>Team 2:</b>\n" + "\n".join(player.name for player in game.players.by_team(1))
-        elif game.current == "Speaking":
-            msg = "So? Mus or Minsa?\n"
-            msg += "\n<b>Team 1:</b>\n" + "\n".join(player.name for player in game.players.by_team(0))
-            msg += "\n<b>Team 2:</b>\n" + "\n".join(player.name for player in game.players.by_team(1))
         elif game.current == "Trading":
-            msg += "Choose wich cards you want to change.\n"
+            msg += "<b>Choose wich cards you want to change.</b>\n"
             msg += "\n<b>Team 1:</b>\n" + "\n".join(player.name + " will change " + str(len(player.asks)) + " card(s)." for player in game.players.by_team(0))
             msg += "\n<b>Team 2:</b>\n" + "\n".join(player.name + " will change " + str(len(player.asks)) + " card(s)." for player in game.players.by_team(1))
+        elif game.current == "Finished":
+            msg += "Party finished!\n"
+            for state_name in game.bet_states:
+                state = game.states[state_name]
+                msg += "\n" + state_name + ": " + ("? (" + str(state.bet) + ")" if state.deffered else str(state.bet))
+        else:
+            if game.current == "Speaking":
+                msg += "<b>Mus or mintza?</b>\n"
+            else:
+                msg += "<b>" + game.current + "</b>\n"
+                msg += "Current bet: " + str(game.states[game.current].bet) + "\n"
+                if game.states[game.current].proposal > 0:
+                    msg += "Proposal: " + str(game.states[game.current].proposal) + "\n"
+            msg += "\nPlayers in <b>bold</b> can speak.\nRemember that you play in the name of your team!\n"
+            for i in range(2):
+                msg += "\nTeam " + str(i + 1) + ": <b>" + str(game.players.teams[i].score) + "</b>\n"
+                player_msg = ""
+                for player in game.players.by_team(i):
+                    player_msg += player.name
+                    if game.states[game.current].is_player_authorised(player.id):
+                        player_msg = "<b>" + player_msg + "</b>"
+                    if game.current == "Pariak":
+                        player_msg = player_msg + ": " + ("Bai" if player.has_hand else "Ez")
+                    elif game.current == "Jokua":
+                        player_msg = player_msg + ": " + ("Bai" if player.has_game else "Ez")
+                    player_msg += "\n"
+                msg += player_msg
+            if game.current in game.bet_states:
+                cur = game.bet_states.index(game.current)
+                for i in range(cur):
+                    state = game.states[game.bet_states[i]]
+                    msg += "\n" + game.bet_states[i] + ": " + ("? (" + str(state.bet) + ")" if state.deffered else str(state.bet))
         return msg
 
     def compute_keyboard(self, game):
         kb = []
         if game.current == "Waiting":
-            kb.append([tnp.InlineKeyboardButton(text='Start Game', callback_data="start")])
+            kb.append([tnp.InlineKeyboardButton(text='👍 Start Game', callback_data="start")])
             kb_join = []
             kb_join.append(tnp.InlineKeyboardButton(text='Join team 1',
                                                     callback_data="add_player.0"))
             kb_join.append(tnp.InlineKeyboardButton(text='Join team 2',
                                                     callback_data="add_player.1"))
             kb.append(kb_join)
-            kb.append([tnp.InlineKeyboardButton(text='Leave', callback_data="remove_player")])
+            kb.append([tnp.InlineKeyboardButton(text='🏃 Leave', callback_data="remove_player")])
+            return tnp.InlineKeyboardMarkup(inline_keyboard=kb)
+        kb.append([tnp.InlineKeyboardButton(text='Show cards', callback_data="show_cards")])
+        if game.current == "Speaking":
+            kb.append([tnp.InlineKeyboardButton(text='Mintza', callback_data="mintza"),
+                       tnp.InlineKeyboardButton(text='Mus', callback_data="mus")])
+        elif game.current == "Trading":
+            kb.append([tnp.InlineKeyboardButton(text='Change #1', callback_data="change.0"),
+                       tnp.InlineKeyboardButton(text='Change #2', callback_data="change.1"),
+                       tnp.InlineKeyboardButton(text='Change #3', callback_data="change.2"),
+                       tnp.InlineKeyboardButton(text='Change #4', callback_data="change.3")])
+            kb.append([tnp.InlineKeyboardButton(text='Confirm', callback_data="confirm")])
         else:
-            kb.append([tnp.InlineKeyboardButton(text='Show cards', callback_data="show_cards")])
-            if game.current == "Speaking":
-                kb.append([tnp.InlineKeyboardButton(text='Minsa', callback_data="minsa"),
-                           tnp.InlineKeyboardButton(text='Mus', callback_data="mus")])
-            elif game.current == "Trading":
-                kb.append([tnp.InlineKeyboardButton(text='Change #1', callback_data="change.0"),
-                           tnp.InlineKeyboardButton(text='Change #2', callback_data="change.1"),
-                           tnp.InlineKeyboardButton(text='Change #3', callback_data="change.2"),
-                           tnp.InlineKeyboardButton(text='Change #4', callback_data="change.3")])
-                kb.append([tnp.InlineKeyboardButton(text='Confirm', callback_data="confirm")])
+            possible_actions = game.states[game.current].actions_authorised()
+            if 'ok' in possible_actions:
+                kb.append([tnp.InlineKeyboardButton(text='OK', callback_data="ok")])
+                return tnp.InlineKeyboardMarkup(inline_keyboard=kb)
+            if 'paso' in possible_actions:
+                kb.append([tnp.InlineKeyboardButton(text='Imido', callback_data="imido"),
+                           tnp.InlineKeyboardButton(text='Paso', callback_data="paso")])
+            if 'kanta' in possible_actions:
+                kb.append([tnp.InlineKeyboardButton(text='kanta', callback_data="kanta"),
+                           tnp.InlineKeyboardButton(text='Tira', callback_data="tira")])
+            if 'idoki' in possible_actions:
+                kb.append([tnp.InlineKeyboardButton(text='Idoki', callback_data="idoki"),
+                           tnp.InlineKeyboardButton(text='Tira', callback_data="tira")])
+            if 'gehiago' in possible_actions:
+                basque_numbers = [("Bat", 1), ("Bi", 2), ("Hiru", 3), ("Lau", 4), ("Bost", 5), ("Amar", 10)]
+                gehiago = [tnp.InlineKeyboardButton(text=name, callback_data="gehiago." + str(i)) for name, i in basque_numbers]
+                kb.append(gehiago[:3])
+                kb.append(gehiago[3:])
+                kb.append([tnp.InlineKeyboardButton(text='Hor dago!', callback_data="hordago")])
 
         return tnp.InlineKeyboardMarkup(inline_keyboard=kb)
 

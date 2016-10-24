@@ -1,18 +1,20 @@
 import unittest
 import mus
 
+from mus import Game, Card, Team
+
 class TestInitialMus(unittest.TestCase):
 
     def setUp(self):
-        self.game = mus.Game(0)
+        self.game = Game(0)
         self.christophe = (1, "Christophe")
         self.gerard = (2, "Gerard")
         self.thierry = (3, "Thierry")
         self.michel = (4, "Michel")
 
     def test_other_team(self):
-        self.assertEqual(mus.Team.other_team(0), 1)
-        self.assertEqual(mus.Team.other_team(1), 0)
+        self.assertEqual(Team.other_team(0), 1)
+        self.assertEqual(Team.other_team(1), 0)
 
     def test_add_player(self):
         self.game.action("add_player", *self.christophe, "1")
@@ -62,7 +64,7 @@ class TestInitialMus(unittest.TestCase):
 class TestTwoPlayerSpeakTrade(unittest.TestCase):
 
     def setUp(self):
-        self.game = mus.Game(0)
+        self.game = Game(0)
         self.christophe = 1
         self.gerard = 2
         self.game.action("add_player", 1, "Christophe", "0")
@@ -71,9 +73,9 @@ class TestTwoPlayerSpeakTrade(unittest.TestCase):
 
     def test_card_distribution(self):
         cards = [player.get_cards() for player in self.game.players]
-        cards = [card for card_set in cards for card in card_set]
+        card_indexes = [card.index() for card_set in cards for card in card_set]
         # Check if not card is here twice
-        self.assertEqual(len(cards), len(set(cards)))
+        self.assertEqual(len(card_indexes), len(set(card_indexes)))
         self.assertEqual(len(self.game.packet.unused_cards), 32)
 
     def test_first_turn(self):
@@ -131,6 +133,165 @@ class TestTwoPlayerSpeakTrade(unittest.TestCase):
                 for j in range(3):
                     self.assertFalse(old_gerard_cards[j] in new_gerard_cards)
             self.assertTrue(old_gerard_cards[3] in new_gerard_cards)
+
+class TestTwoPlayerHandiak(unittest.TestCase):
+    own_name = "Haundia"
+    next_name = "Tipia"
+
+    def setUp(self):
+        self.game = Game(0)
+        self.christophe = 1
+        self.gerard = 2
+        self.game.action("add_player", 1, "Christophe", "0")
+        self.game.action("add_player", 2, "Gerard", "1")
+        self.game.action("start", self.christophe)
+        self.game.action("mintza", self.christophe)
+
+    def test_init_handiak(self):
+        self.assertEqual(self.game.current, self.own_name)
+        self.assertEqual(self.game.players.echku, 0)
+
+    def test_paso_paso(self):
+        self.game.action("paso", self.christophe)
+        self.game.action("paso", self.gerard)
+        self.assertEqual(self.game.current, self.next_name)
+
+    def test_paso_imido_idoki(self):
+        self.game.action("paso", self.christophe)
+        self.game.action("imido", self.gerard)
+        self.game.action("idoki", self.christophe)
+        self.assertTrue(self.game.states[self.own_name].deffered)
+        self.assertEqual(self.game.states[self.own_name].bet, 2)
+        self.assertEqual(self.game.current, self.next_name)
+
+    def test_imido_bi_hiru_idoki(self):
+        self.game.action("imido", self.christophe)
+        self.game.action("gehiago", self.gerard, "2")
+        self.game.action("gehiago", self.christophe, "3")
+        self.game.action("idoki", self.gerard)
+        self.assertTrue(self.game.states[self.own_name].deffered)
+        self.assertEqual(self.game.states[self.own_name].bet, 7)
+        self.assertEqual(self.game.current, self.next_name)
+
+    def test_paso_imido_tira(self):
+        self.game.action("paso", self.christophe)
+        self.game.action("imido", self.gerard)
+        self.game.action("tira", self.christophe)
+        self.assertFalse(self.game.states[self.own_name].deffered)
+        self.assertEqual(self.game.states[self.own_name].bet, 1)
+        self.assertEqual(self.game.players.get_player_team(self.gerard).score, 1)
+        self.assertEqual(self.game.current, self.next_name)
+
+    def test_imdido_lau_tira(self):
+        self.game.action("imido", self.christophe)
+        self.game.action("gehiago", self.gerard, "4")
+        self.game.action("tira", self.christophe)
+        self.assertEqual(self.game.states[self.own_name].bet, 2)
+        self.assertEqual(self.game.players.get_player_team(self.gerard).score, 2)
+        self.assertEqual(self.game.current, self.next_name)
+
+
+class TestTwoPlayerTipia(TestTwoPlayerHandiak):
+    own_name = "Tipia"
+    next_name = "Pariak"
+    def setUp(self):
+        super().setUp()
+        self.game.action("paso", self.christophe)
+        self.game.action("paso", self.gerard)
+
+
+class TestTwoPlayerPariak(unittest.TestCase):
+    def setUp(self):
+        self.game = Game(0)
+        self.paired_cards = sorted([Card(value=1, color='Oros'),
+                                    Card(value=5, color='Oros'),
+                                    Card(value=5, color='Bastos'),
+                                    Card(value=12, color='Copas')])
+        self.unpaired_cards = sorted([Card(value=2, color='Oros'),
+                                      Card(value=6, color='Oros'),
+                                      Card(value=7, color='Bastos'),
+                                      Card(value=11, color='Copas')])
+        self.christophe = 1
+        self.gerard = 2
+        self.game.action("add_player", 1, "Christophe", "0")
+        self.game.action("add_player", 2, "Gerard", "1")
+        self.game.action("start", self.christophe)
+        self.game.action("mintza", self.christophe)
+        self.game.action("paso", self.christophe)
+        self.game.action("paso", self.gerard)
+        self.game.action("paso", self.christophe)
+
+    def test_bai_ez(self):
+        self.game.players[self.christophe].cards = self.paired_cards
+        self.game.players[self.gerard].cards = self.unpaired_cards
+        self.game.action("paso", self.gerard)
+        self.assertEqual("Pariak", self.game.current)
+        self.assertTrue("ok" in self.game.states[self.game.current].actions_authorised())
+
+    def test_ez_ez(self):
+        self.game.players[self.christophe].cards = self.unpaired_cards
+        self.game.players[self.gerard].cards = self.unpaired_cards
+        self.game.action("paso", self.gerard)
+        self.assertEqual("Pariak", self.game.current)
+        self.assertTrue("ok" in self.game.states[self.game.current].actions_authorised())
+
+    def test_bai_bai(self):
+        self.game.players[self.christophe].cards = self.paired_cards
+        self.game.players[self.gerard].cards = self.paired_cards
+        self.game.action("paso", self.gerard)
+        self.assertEqual("Pariak", self.game.current)
+        self.assertTrue("ok" not in self.game.states[self.game.current].actions_authorised())
+        self.game.action("paso", self.christophe)
+        self.game.action("paso", self.gerard)
+
+
+class TestTwoPlayerJokua(unittest.TestCase):
+    def setUp(self):
+        self.game = Game(0)
+        self.game_cards = sorted([Card(value=4, color='Oros'),
+                                  Card(value=7, color='Oros'),
+                                  Card(value=10, color='Bastos'),
+                                  Card(value=12, color='Copas')])
+        self.nogame_cards = sorted([Card(value=2, color='Oros'),
+                                    Card(value=6, color='Oros'),
+                                    Card(value=7, color='Bastos'),
+                                    Card(value=11, color='Copas')])
+        self.christophe = 1
+        self.gerard = 2
+        self.game.action("add_player", 1, "Christophe", "0")
+        self.game.action("add_player", 2, "Gerard", "1")
+        self.game.action("start", self.christophe)
+        self.game.action("mintza", self.christophe)
+        self.game.action("paso", self.christophe)
+        self.game.action("paso", self.gerard)
+        # Tipia
+        self.game.action("paso", self.christophe)
+
+    def test_bai_ez(self):
+        self.game.players[self.christophe].cards = self.game_cards
+        self.game.players[self.gerard].cards = self.nogame_cards
+        self.game.action("paso", self.gerard)
+        self.game.action("ok", self.gerard)
+        self.assertEqual("Jokua", self.game.current)
+        self.assertTrue("ok" in self.game.states[self.game.current].actions_authorised())
+
+    def test_ez_ez(self):
+        self.game.players[self.christophe].cards = self.nogame_cards
+        self.game.players[self.gerard].cards = self.nogame_cards
+        self.game.action("paso", self.gerard)
+        self.game.action("ok", self.gerard)
+        self.assertEqual("Jokua", self.game.current)
+        self.assertTrue("ok" not in self.game.states[self.game.current].actions_authorised())
+        self.assertTrue(self.game.states[self.game.current].false_game)
+
+    def test_bai_bai(self):
+        self.game.players[self.christophe].cards = self.game_cards
+        self.game.players[self.gerard].cards = self.game_cards
+        self.game.action("paso", self.gerard)
+        self.game.action("ok", self.gerard)
+        self.assertEqual("Jokua", self.game.current)
+        self.assertTrue("ok" not in self.game.states[self.game.current].actions_authorised())
+        self.assertFalse(self.game.states[self.game.current].false_game)
 
 
 if __name__ == '__main__':
