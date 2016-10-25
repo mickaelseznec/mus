@@ -1,5 +1,4 @@
 import random
-from functools import total_ordering
 
 class ForbiddenActionException(Exception):
     pass
@@ -9,7 +8,6 @@ class WrongPlayerException(ForbiddenActionException):
     pass
 
 
-@total_ordering
 class Card:
     COLORS = ["Copas", "Espadas", "Bastos", "Oros"]
     VALUES = [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]
@@ -47,6 +45,56 @@ class Card:
 
     def __lt__(self, card):
         return self.index() < card.index()
+
+
+class Hand:
+    def __init__(self, cards):
+        self.hand = cards
+
+
+class HaundiaHand(Hand):
+    def __lt__(self, other):
+        return (sorted([c.value for c in self.hand], reverse=True)
+                < sorted([c.value for c in other.hand], reverse=True))
+
+
+class TipiaHand(Hand):
+    def __lt__(self, other):
+        return (sorted([c.value for c in self.hand]) > sorted([c.value for c in other.hand]))
+
+
+class PariakHand(Hand):
+    def group_pairs(self):
+        values = [card.value for card in self.hand]
+        return sorted(((values.count(value), value) for value in sorted(list(set(values)), reverse=True)), reverse=True)
+
+    def has_double_pair(self):
+        return all(pair[0] == 2 for pair in self.group_pairs()) or self.group_pairs()[0][0] == 4
+
+    def has_triple(self):
+        return any(pair[0] == 3 for pair in self.group_pairs())
+
+    def has_double_only(self):
+        return not self.has_double_pair() and any(pair[0] == 2 for pair in self.group_pairs())
+
+    def __lt__(self, other):
+        own_group, other_group = self.group_pairs(), other.group_pairs()
+
+        if self.has_double_pair():
+            if not other.has_double_pair():
+                return False
+            return max(own_group, other_group, key=lambda e: e[1]) == other_group
+        if self.has_triple():
+            return other.has_double_pair() or other.has_triple() and own_group < other_group
+        if self.has_double_only():
+            return other.has_double_pair() or other.has_triple() or other.has_double_only() and own_group < other_group
+        return own_group < other_group
+
+
+class JokuaHand(Hand):
+    def __lt__(self, other):
+        return True
+
 
 class Packet:
     CARDS = [Card(i) for i in range(len(Card.COLORS) * len(Card.VALUES))]
@@ -173,6 +221,8 @@ class PlayerHolder:
         else:
             self.echku = (self.echku + 1) % len(self.players)
 
+    def by_echku(self):
+        return self.players[self.echku:] + self.players[:self.echku]
 
     def __iter__(self):
         return iter(self.players)
@@ -332,9 +382,17 @@ class BetState(GameState):
         self.engaged = False
         self.hor_daged = False
         self.proposal = 0
+        self.winner = None
 
-    def add_points(self):
-        raise NotImplementedError
+    def compute_winner(self):
+        echku_order = self.players.by_echku()
+        for i in range(len(echku_order)):
+            for j in range(i, len(echku_order)):
+                hand_1 = self.HandType(echku_order[i].cards)
+                hand_2 = self.HandType(echku_order[j].cards)
+                if hand_1 < hand_2:
+                    echku_order[i], echku_order[j] = echku_order[j], echku_order[i]
+        return echku_order[0].team_number
 
     def actions_authorised(self):
         actions = []
@@ -407,23 +465,26 @@ class BetState(GameState):
             self.deffered = False
             return "Finished"
 
+    def clean_up(self):
+        self.winner = self.compute_winner()
+
 
 class Haundia(BetState):
     own_state = "Haundia"
     next_state = "Tipia"
+    HandType = HaundiaHand
 
-    def add_points(self):
-        if self.deffered:
-            pass
 
 class Tipia(BetState):
     own_state = "Tipia"
     next_state = "Pariak"
+    HandType = TipiaHand
 
 
 class Pariak(BetState):
     own_state = "Pariak"
     next_state = "Jokua"
+    HandType = PariakHand
 
     def __init__(self, players, packet):
         super().__init__(players, packet)
