@@ -106,7 +106,7 @@ class TestTwoPlayerSpeakTrade(unittest.TestCase):
         self.assertFalse(old_christophe_cards[2] in new_christophe_cards)
         self.assertFalse(old_christophe_cards[3] in new_christophe_cards)
 
-    def test_empy_card_packet(self):
+    def test_empty_card_packet(self):
         for _ in range(50):
             self.game.action("mus", self.christophe)
             self.game.action("mus", self.gerard)
@@ -302,7 +302,8 @@ class TestCardComparisons(unittest.TestCase):
         self.gerard = 2
         self.game.action("add_player", 1, "Christophe", "0")
         self.game.action("add_player", 2, "Gerard", "1")
-        self.winner = self.game.states[self.game_state].compute_winner
+        self.state = self.game.states[self.game_state]
+        self.compute_winner = self.state.compute_winner
 
 
 class TestHaundiaComparisons(TestCardComparisons):
@@ -317,7 +318,8 @@ class TestHaundiaComparisons(TestCardComparisons):
                                                        Card(value=6, color='Oros'),
                                                        Card(value=10, color='Bastos'),
                                                        Card(value=11, color='Copas')])
-        self.assertEqual(self.winner(), 0)
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 0)
 
     def test_haundia_both_12(self):
         self.game.players[self.christophe].cards = sorted([Card(value=4, color='Oros'),
@@ -328,7 +330,8 @@ class TestHaundiaComparisons(TestCardComparisons):
                                                        Card(value=6, color='Oros'),
                                                        Card(value=11, color='Bastos'),
                                                        Card(value=12, color='Copas')])
-        self.assertEqual(self.winner(), 1)
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 1)
 
     def test_haundia_same_cards(self):
         self.game.players[self.christophe].cards = sorted([Card(value=4, color='Oros'),
@@ -339,7 +342,8 @@ class TestHaundiaComparisons(TestCardComparisons):
                                                        Card(value=7, color='Oros'),
                                                        Card(value=10, color='Bastos'),
                                                        Card(value=12, color='Copas')])
-        self.assertEqual(self.winner(), 0)
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 0)
 
 
 class TestTipaComparisons(TestCardComparisons):
@@ -354,7 +358,8 @@ class TestTipaComparisons(TestCardComparisons):
                                                        Card(value=6, color='Oros'),
                                                        Card(value=10, color='Bastos'),
                                                        Card(value=12, color='Copas')])
-        self.assertEqual(self.winner(), 1)
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 1)
 
     def test_tipia_both_4(self):
         self.game.players[self.christophe].cards = sorted([Card(value=4, color='Oros'),
@@ -365,7 +370,8 @@ class TestTipaComparisons(TestCardComparisons):
                                                        Card(value=10, color='Oros'),
                                                        Card(value=11, color='Bastos'),
                                                        Card(value=12, color='Copas')])
-        self.assertEqual(self.winner(), 0)
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 0)
 
     def test_tipia_same(self):
         self.game.players[self.christophe].cards = sorted([Card(value=4, color='Oros'),
@@ -376,7 +382,8 @@ class TestTipaComparisons(TestCardComparisons):
                                                        Card(value=7, color='Oros'),
                                                        Card(value=10, color='Bastos'),
                                                        Card(value=12, color='Copas')])
-        self.assertEqual(self.winner(), 0)
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 0)
 
 class TestPariakComparisons(TestCardComparisons):
     game_state = "Pariak"
@@ -390,7 +397,8 @@ class TestPariakComparisons(TestCardComparisons):
                                                        Card(value=2, color='Oros'),
                                                        Card(value=10, color='Bastos'),
                                                        Card(value=12, color='Copas')])
-        self.assertEqual(self.winner(), 1)
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 1)
 
     def test_pariak_pairvpair(self):
         self.game.players[self.christophe].cards = sorted([Card(value=4, color='Oros'),
@@ -401,7 +409,8 @@ class TestPariakComparisons(TestCardComparisons):
                                                        Card(value=2, color='Oros'),
                                                        Card(value=10, color='Bastos'),
                                                        Card(value=12, color='Copas')])
-        self.assertEqual(self.winner(), 0)
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 0)
 
     def test_pariak_pairvpair_same(self):
         self.game.players[self.christophe].cards = sorted([Card(value=4, color='Oros'),
@@ -412,7 +421,8 @@ class TestPariakComparisons(TestCardComparisons):
                                                        Card(value=7, color='Oros'),
                                                        Card(value=7, color='Bastos'),
                                                        Card(value=12, color='Copas')])
-        self.assertEqual(self.winner(), 0)
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 0)
 
     def test_pariak_pairvtriple(self):
         self.game.players[self.christophe].cards = sorted([Card(value=4, color='Oros'),
@@ -423,7 +433,8 @@ class TestPariakComparisons(TestCardComparisons):
                                                        Card(value=2, color='Oros'),
                                                        Card(value=2, color='Bastos'),
                                                        Card(value=12, color='Copas')])
-        self.assertEqual(self.winner(), 1)
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 1)
 
     def test_pariak_triplevtriple(self):
         self.game.players[self.christophe].cards = sorted([Card(value=7, color='Oros'),
@@ -434,7 +445,8 @@ class TestPariakComparisons(TestCardComparisons):
                                                        Card(value=2, color='Oros'),
                                                        Card(value=2, color='Bastos'),
                                                        Card(value=12, color='Copas')])
-        self.assertEqual(self.winner(), 0)
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 0)
 
     def test_pariak_triplevdouble_double(self):
         self.game.players[self.christophe].cards = sorted([Card(value=7, color='Oros'),
@@ -445,7 +457,8 @@ class TestPariakComparisons(TestCardComparisons):
                                                        Card(value=2, color='Oros'),
                                                        Card(value=2, color='Bastos'),
                                                        Card(value=12, color='Copas')])
-        self.assertEqual(self.winner(), 0)
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 0)
 
     def test_double_doublevdouble_double(self):
         self.game.players[self.christophe].cards = sorted([Card(value=7, color='Oros'),
@@ -456,8 +469,72 @@ class TestPariakComparisons(TestCardComparisons):
                                                        Card(value=7, color='Oros'),
                                                        Card(value=12, color='Bastos'),
                                                        Card(value=12, color='Copas')])
-        self.assertEqual(self.winner(), 1)
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 1)
 
+
+class TestJokuaComparisons(TestCardComparisons):
+    game_state = "Jokua"
+
+    def test_game_v_no_game(self):
+        self.game.players[self.christophe].cards = sorted([Card(value=7, color='Oros'),
+                                                           Card(value=7, color='Oros'),
+                                                           Card(value=1, color='Bastos'),
+                                                           Card(value=1, color='Copas')])
+        self.game.players[self.gerard].cards = sorted([Card(value=7, color='Oros'),
+                                                       Card(value=7, color='Oros'),
+                                                       Card(value=12, color='Bastos'),
+                                                       Card(value=12, color='Copas')])
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 1)
+
+    def test_no_game_v_no_game(self):
+        self.game.players[self.christophe].cards = sorted([Card(value=7, color='Oros'),
+                                                           Card(value=7, color='Oros'),
+                                                           Card(value=1, color='Bastos'),
+                                                           Card(value=1, color='Copas')])
+        self.game.players[self.gerard].cards = sorted([Card(value=7, color='Oros'),
+                                                       Card(value=7, color='Oros'),
+                                                       Card(value=3, color='Bastos'),
+                                                       Card(value=3, color='Copas')])
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 1)
+
+    def test_game_v_game1(self):
+        self.game.players[self.christophe].cards = sorted([Card(value=7, color='Oros'),
+                                                           Card(value=7, color='Oros'),
+                                                           Card(value=10, color='Bastos'),
+                                                           Card(value=10, color='Copas')])
+        self.game.players[self.gerard].cards = sorted([Card(value=1, color='Oros'),
+                                                       Card(value=11, color='Oros'),
+                                                       Card(value=12, color='Bastos'),
+                                                       Card(value=12, color='Copas')])
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 1)
+
+    def test_game_v_game2(self):
+        self.game.players[self.christophe].cards = sorted([Card(value=11, color='Oros'),
+                                                           Card(value=11, color='Oros'),
+                                                           Card(value=10, color='Bastos'),
+                                                           Card(value=10, color='Copas')])
+        self.game.players[self.gerard].cards = sorted([Card(value=2, color='Oros'),
+                                                       Card(value=11, color='Oros'),
+                                                       Card(value=12, color='Bastos'),
+                                                       Card(value=12, color='Copas')])
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 1)
+
+    def test_game_v_game3(self):
+        self.game.players[self.christophe].cards = sorted([Card(value=11, color='Oros'),
+                                                           Card(value=11, color='Oros'),
+                                                           Card(value=10, color='Bastos'),
+                                                           Card(value=10, color='Copas')])
+        self.game.players[self.gerard].cards = sorted([Card(value=7, color='Oros'),
+                                                       Card(value=12, color='Oros'),
+                                                       Card(value=12, color='Bastos'),
+                                                       Card(value=12, color='Copas')])
+        self.compute_winner()
+        self.assertEqual(self.state.winner, 0)
 
 
 if __name__ == '__main__':

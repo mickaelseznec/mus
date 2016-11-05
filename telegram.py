@@ -133,14 +133,31 @@ class HordagoTelegramHandler:
             msg += "\n<b>Team 1:</b>\n" + "\n".join(player.name for player in game.players.by_team(0))
             msg += "\n<b>Team 2:</b>\n" + "\n".join(player.name for player in game.players.by_team(1))
         elif game.current == "Trading":
-            msg += "<b>Choose wich cards you want to change.</b>\n"
+            msg += "<b>Choose which cards you want to change.</b>\n"
             msg += "\n<b>Team 1:</b>\n" + "\n".join(player.name + " will change " + str(len(player.asks)) + " card(s)." for player in game.players.by_team(0))
             msg += "\n<b>Team 2:</b>\n" + "\n".join(player.name + " will change " + str(len(player.asks)) + " card(s)." for player in game.players.by_team(1))
         elif game.current == "Finished":
-            msg += "Party finished!\n"
+            if game.players.has_finished():
+                msg += "Party finished!\n"
+                msg += "\nTeam " + str(game.players.winner_team() + 1) + " HAS WON, CONGRATS!\n"
+            else:
+                msg += "Turn finished!\n"
+            msg += "\n<b>Summary:</b>"
             for state_name in game.bet_states:
                 state = game.states[state_name]
-                msg += "\n" + state_name + ": " + ("? (" + str(state.bet) + ")" if state.deffered else str(state.bet))
+                msg += "\n" + state_name + ": " + str(state.bet)
+                if state.bonus > 0:
+                    msg += " + " + str(state.bonus) + " bonus"
+                if state.bet > 0 or state.bonus > 0:
+                    msg += " -> <b>Team " + str(state.winner + 1) + "</b>"
+            msg += "\n"
+            for i in range(2):
+                msg += "\nTeam " + str(i + 1) + ": <b>" + str(game.players.teams[i].score) + "</b>"
+                player_msg = ""
+                for player in game.players.by_team(i):
+                    player_msg += player.name + " had " + ", ".join(str(card) for card in player.get_cards())
+                msg += "\n" + player_msg
+
         else:
             if game.current == "Speaking":
                 msg += "<b>Mus or mintza?</b>\n"
@@ -167,7 +184,15 @@ class HordagoTelegramHandler:
                 cur = game.bet_states.index(game.current)
                 for i in range(cur):
                     state = game.states[game.bet_states[i]]
-                    msg += "\n" + game.bet_states[i] + ": " + ("? (" + str(state.bet) + ")" if state.deffered else str(state.bet))
+                    if state.winner is not None:
+                        msg += "\n" + game.bet_states[i] + ": " + str(state.bet) + " -> Team "
+                        if state.deffered:
+                            msg += "?"
+                        else:
+                            msg += str(state.winner + 1)
+                    else:
+                        msg += "\n" + game.bet_states[i] + ": no bet"
+
         return msg
 
     def compute_keyboard(self, game):
@@ -181,6 +206,12 @@ class HordagoTelegramHandler:
                                                     callback_data="add_player.1"))
             kb.append(kb_join)
             kb.append([tnp.InlineKeyboardButton(text='🏃 Leave', callback_data="remove_player")])
+            return tnp.InlineKeyboardMarkup(inline_keyboard=kb)
+        if game.current == "Finished":
+            if game.players.has_finished():
+                kb.append([tnp.InlineKeyboardButton(text='New Game', callback_data="ok")])
+            else:
+                kb.append([tnp.InlineKeyboardButton(text='OK', callback_data="ok")])
             return tnp.InlineKeyboardMarkup(inline_keyboard=kb)
         kb.append([tnp.InlineKeyboardButton(text='Show cards', callback_data="show_cards")])
         if game.current == "Speaking":
@@ -201,7 +232,7 @@ class HordagoTelegramHandler:
                 kb.append([tnp.InlineKeyboardButton(text='Imido', callback_data="imido"),
                            tnp.InlineKeyboardButton(text='Paso', callback_data="paso")])
             if 'kanta' in possible_actions:
-                kb.append([tnp.InlineKeyboardButton(text='kanta', callback_data="kanta"),
+                kb.append([tnp.InlineKeyboardButton(text='Kanta', callback_data="kanta"),
                            tnp.InlineKeyboardButton(text='Tira', callback_data="tira")])
             if 'idoki' in possible_actions:
                 kb.append([tnp.InlineKeyboardButton(text='Idoki', callback_data="idoki"),

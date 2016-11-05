@@ -8,6 +8,10 @@ class WrongPlayerException(ForbiddenActionException):
     pass
 
 
+class TeamWonException(Exception):
+    pass
+
+
 class Card:
     COLORS = ["Copas", "Espadas", "Bastos", "Oros"]
     VALUES = [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]
@@ -21,18 +25,6 @@ class Card:
                 raise ForbiddenActionException
             self.value = value
             self.color = color
-
-    @classmethod
-    def has_hand(cls, cards):
-        values = [card.value for card in cards]
-        counter = [values.count(value) for value in set(values)]
-        if any(count >= 2 for count in counter):
-            return True
-        return False
-
-    @classmethod
-    def has_game(cls, cards):
-        return sum(min(card.value, 10) for card in cards) >= 30
 
     def index(self):
         return Card.COLORS.index(self.color) + len(Card.COLORS) * Card.VALUES.index(self.value)
@@ -64,6 +56,13 @@ class TipiaHand(Hand):
 
 
 class PariakHand(Hand):
+    def has_hand(self):
+        values = [card.value for card in self.hand]
+        counter = [values.count(value) for value in set(values)]
+        if any(count >= 2 for count in counter):
+            return True
+        return False
+
     def group_pairs(self):
         values = [card.value for card in self.hand]
         return sorted(((values.count(value), value) for value in sorted(list(set(values)), reverse=True)), reverse=True)
@@ -77,29 +76,60 @@ class PariakHand(Hand):
     def has_double_only(self):
         return not self.has_double_pair() and any(pair[0] == 2 for pair in self.group_pairs())
 
-    def __lt__(self, other):
-        own_group, other_group = self.group_pairs(), other.group_pairs()
-
+    def bonus(self):
         if self.has_double_pair():
-            if not other.has_double_pair():
-                return False
-            return max(own_group, other_group, key=lambda e: e[1]) == other_group
+            return 3
         if self.has_triple():
-            return other.has_double_pair() or other.has_triple() and own_group < other_group
+            return 2
         if self.has_double_only():
-            return other.has_double_pair() or other.has_triple() or other.has_double_only() and own_group < other_group
+            return 1
+        return 0
+
+    def __lt__(self, other):
+        self_bonus, other_bonus = self.bonus(), other.bonus()
+        if self_bonus != other_bonus:
+            return self_bonus < other_bonus
+
+        own_group, other_group = self.group_pairs(), other.group_pairs()
         return own_group < other_group
 
 
 class JokuaHand(Hand):
+    jokua_index = {(33 + i): i for i in range(8)}
+    jokua_index.update({32: 8, 31: 9})
+
+    def sum_cards(self):
+        return sum(min(card.value, 10) for card in self.hand)
+
+    def has_game(self):
+        return self.sum_cards() > 30
+
+    def bonus(self):
+        card_sum = self.sum_cards()
+        if card_sum > 31:
+            return 2
+        if card_sum == 31:
+            return 3
+        return 0
+
     def __lt__(self, other):
-        return True
+        if self.has_game():
+            if not other.has_game():
+                return False
+            return JokuaHand.jokua_index[self.sum_cards()] < JokuaHand.jokua_index[other.sum_cards()]
+
+        return self.sum_cards() < other.sum_cards()
 
 
 class Packet:
     CARDS = [Card(i) for i in range(len(Card.COLORS) * len(Card.VALUES))]
 
     def __init__(self):
+        self.used_cards = []
+        self.unused_cards = []
+        self.restore()
+
+    def restore(self):
         self.unused_cards = []
         self.used_cards = list(range(len(Packet.CARDS)))
         self.new_packet()
@@ -156,6 +186,14 @@ class PlayerHolder:
         self.echku = 0
         self.authorised_team = 0
         self.authorised_player = 0
+
+    def has_finished(self):
+        return any(team.score >= Game.score_max for team in self.teams)
+
+    def winner_team(self):
+        for i, team in enumerate(self.teams):
+            if team.score >= Game.score_max:
+                return i
 
     def add(self, player_id, player_name, team_number):
         if player_id in self:
@@ -244,6 +282,11 @@ class Team:
     @classmethod
     def other_team(cls, team_number):
         return (team_number + 1) % 2
+
+    def add_score(self, score):
+        self.score += score
+        if self.score >= Game.score_max:
+            raise TeamWonException
 
 
 class GameState:
@@ -373,11 +416,13 @@ class Trading(GameState):
 class BetState(GameState):
     own_state = ""
     next_state = ""
+    has_bonus = False
 
     def __init__(self, players, packet):
         super().__init__(players, packet)
-        self.actions = ["paso", "imido", "tira", "gehiago", "hor_dago", "kanta", "idoki", "ok"]
+        self.actions = ["paso", "imido", "tira", "gehiago", "hordago", "kanta", "idoki", "ok"]
         self.bet = 0
+        self.bonus = 0
         self.deffered = True
         self.engaged = False
         self.hor_daged = False
@@ -385,6 +430,8 @@ class BetState(GameState):
         self.winner = None
 
     def compute_winner(self):
+        if not self.deffered:
+            return
         echku_order = self.players.by_echku()
         for i in range(len(echku_order)):
             for j in range(i, len(echku_order)):
@@ -392,14 +439,20 @@ class BetState(GameState):
                 hand_2 = self.HandType(echku_order[j].cards)
                 if hand_1 < hand_2:
                     echku_order[i], echku_order[j] = echku_order[j], echku_order[i]
-        return echku_order[0].team_number
+        self.winner = echku_order[0].team_number
+
+    def compute_bonus(self):
+        if self.has_bonus and self.engaged:
+            for player in self.players:
+                if player.team_number == self.winner:
+                    self.bonus += self.HandType(player.cards).bonus()
 
     def actions_authorised(self):
         actions = []
         if self.hor_daged:
             actions += "kanta", "tira"
         else:
-            actions += "gehiago", "hor_dago"
+            actions += "gehiago", "hordago"
             if not self.engaged:
                 actions += "paso", "imido"
             else:
@@ -408,11 +461,13 @@ class BetState(GameState):
 
     def prepare(self):
         self.players.authorise_player()
+        self.winner = None
         self.bet = 1
         self.deffered = True
         self.engaged = False
         self.hor_daged = False
         self.proposal = 0
+        self.bonus = 0
 
     def authorise_next_player(self):
         self.players.authorise_next_player()
@@ -443,30 +498,31 @@ class BetState(GameState):
                 proposal -= 1
             self.bet += self.proposal
             self.proposal = proposal
-            if not self.engaged:
-                self.engaged = True
+            self.engaged = True
             self.authorise_opposite_team(player_id)
             return self.own_state
-        elif action == "hor_dago":
+        elif action == "hordago":
             self.hor_daged = True
-            self.deffered = False
-            self.authorise_opposite_team(player_id)
-            return self.own_state
+            bet = Game.score_max - self.players.teams[self.players[player_id].team_number].score
+            return self.handle("gehiago", player_id, str(bet))
         elif action == "tira":
             self.deffered = False
-            self.players.get_player_opposite_team(player_id).score += self.bet
-            if self.players.get_player_opposite_team(player_id).score >= Game.score_max:
+            self.winner = Team.other_team(self.players[player_id].team_number)
+            try:
+                self.players.get_player_opposite_team(player_id).add_score(self.bet)
+            except TeamWonException:
                 return "Finished"
             return self.next_state
         elif action == "idoki":
             self.bet += self.proposal
             return self.next_state
         elif action == "kanta":
-            self.deffered = False
+            self.bet += self.proposal
             return "Finished"
 
     def clean_up(self):
-        self.winner = self.compute_winner()
+        self.compute_winner()
+        self.compute_bonus()
 
 
 class Haundia(BetState):
@@ -485,10 +541,12 @@ class Pariak(BetState):
     own_state = "Pariak"
     next_state = "Jokua"
     HandType = PariakHand
+    has_bonus = True
 
     def __init__(self, players, packet):
         super().__init__(players, packet)
         self.no_bet = False
+        self.no_winner = False
 
     def is_player_authorised(self, player_id):
         if self.no_bet:
@@ -510,22 +568,37 @@ class Pariak(BetState):
             return self.next_state
         return super().handle(action, player_id, *args)
 
+    def compute_winner(self):
+        if not self.no_winner:
+            super().compute_winner()
+
     def prepare(self):
         super().prepare()
         self.no_bet = False
+        self.no_winner = False
         self.bet = 1
         for player in self.players:
-            player.has_hand = Card.has_hand(player.cards)
+            player.has_hand = PariakHand(player.cards).has_hand()
+        if all(not player.has_hand for player in self.players):
+            self.no_winner = True
+            self.no_bet = True
+            self.deffered = False
+            self.bet = 0
+            return
         if not (any(player.has_hand for player in self.players.by_team(0)) and
             any(player.has_hand for player in self.players.by_team(1))):
+            self.compute_winner()
             self.no_bet = True
             self.bet = 0
             self.deffered = False
+            self.engaged = True
 
 
 class Jokua(BetState):
     own_state = "Jokua"
     next_state = "Finished"
+    HandType = JokuaHand
+    has_bonus = True
 
     def __init__(self, players, packet):
         super().__init__(players, packet)
@@ -554,29 +627,58 @@ class Jokua(BetState):
         self.no_bet = False
         self.false_game = False
         for player in self.players:
-            player.has_game = Card.has_game(player.cards)
+            player.has_game = JokuaHand(player.cards).has_game()
         if any(player.has_game for player in self.players):
             if not (any(player.has_game for player in self.players.by_team(0)) and
                     any(player.has_game for player in self.players.by_team(1))):
+                self.compute_winner()
                 self.no_bet = True
                 self.bet = 0
+                self.engaged = True
                 self.deffered = False
         else:
             self.false_game = True
 
+    def compute_bonus(self):
+        if self.false_game and self.engaged:
+            self.bonus = 1
+        else:
+            super().compute_bonus()
 
 class Finished(GameState):
     def __init__(self, players, packet, game):
         super().__init__(players, packet)
-        self.actions = ["ok", "new_game"]
+        self.actions = ["ok"]
         self.game = game
 
+    def is_player_authorised(self, player_id):
+        return True
+
     def prepare(self):
-        for state in Game.bet_states:
-            self.game.states[state].add_points()
+        if not self.players.has_finished():
+            try:
+                for state in Game.bet_states:
+                    if self.game.states[state].winner is not None:
+                        if self.game.states[state].deffered:
+                            self.players.teams[self.game.states[state].winner].add_score(self.game.states[state].bet)
+                        self.players.teams[self.game.states[state].winner].add_score(self.game.states[state].bonus)
+            except TeamWonException:
+                self.game.finished = True
 
     def handle(self, action, player_id, *args):
         return "Speaking"
+
+    def clean_up(self):
+        self.packet.restore()
+        for player in self.players:
+            player.cards = sorted(self.packet.take(4))
+        self.players.sort()
+        if self.players.has_finished():
+            for team in self.players.teams:
+                team.score = 0
+            self.players.set_echku(0)
+        else:
+            self.players.set_echku()
 
 
 class Game:
@@ -584,6 +686,7 @@ class Game:
     bet_states = ["Haundia", "Tipia", "Pariak", "Jokua"]
 
     def __init__(self, game_id):
+        self.finished = False
         self.game_id = game_id
         self.players = PlayerHolder()
         self.packet = Packet()
