@@ -52,7 +52,7 @@ class HaundiaHand(Hand):
 
 class TipiaHand(Hand):
     def __lt__(self, other):
-        return (sorted([c.value for c in self.hand]) > sorted([c.value for c in other.hand]))
+        return sorted([c.value for c in self.hand]) > sorted([c.value for c in other.hand])
 
 
 class PariakHand(Hand):
@@ -417,6 +417,7 @@ class BetState(GameState):
     own_state = ""
     next_state = ""
     has_bonus = False
+    HandType = Hand
 
     def __init__(self, players, packet):
         super().__init__(players, packet)
@@ -586,7 +587,7 @@ class Pariak(BetState):
             self.bet = 0
             return
         if not (any(player.has_hand for player in self.players.by_team(0)) and
-            any(player.has_hand for player in self.players.by_team(1))):
+                any(player.has_hand for player in self.players.by_team(1))):
             self.compute_winner()
             self.no_bet = True
             self.bet = 0

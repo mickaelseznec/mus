@@ -2,8 +2,9 @@
 
 import logging
 import pickle
-import redis
 import sys
+
+import redis
 
 import mus
 
@@ -252,10 +253,10 @@ class HordagoTelegramHandler:
                                               inline_message_id):
                                               """
         self.bot.editMessageText(inline_message_id,
-                                    self.compute_message(game),
-                                    reply_markup=self.compute_keyboard(game),
-                                    parse_mode='HTML',
-                                    disable_web_page_preview=True)
+                                 self.compute_message(game),
+                                 reply_markup=self.compute_keyboard(game),
+                                 parse_mode='HTML',
+                                 disable_web_page_preview=True)
 
 
 def main():
