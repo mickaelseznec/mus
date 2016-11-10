@@ -158,10 +158,12 @@ class Packet:
 
 
 class Player:
-    def __init__(self, player_id, player_name, team_number):
+    def __init__(self, player_id, player_name):
         self.id = player_id
         self.name = player_name
-        self.team_number = team_number
+
+        self.team = None
+        self.index = None
         self.is_authorised = False
         self.said = ""
         self.cards = []
@@ -178,14 +180,16 @@ class Player:
     def __eq__(self, other):
         return self.id == other.id
 
+    def __hash__(self):
+        return hash(id(self))
+
 
 class PlayerHolder:
     def __init__(self):
-        self.teams = (Team(), Team())
-        self.players = []
+        self.teams = (Team(0), Team(1))
         self.echku = 0
-        self.authorised_team = 0
-        self.authorised_player = 0
+        self.authorised_team = None
+        self.authorised_player = None
 
     def has_finished(self):
         return any(team.score >= Game.score_max for team in self.teams)
@@ -197,96 +201,120 @@ class PlayerHolder:
 
     def add(self, player_id, player_name, team_number):
         if player_id in self:
-            self[player_id].team_number = team_number
-        else:
-            self.players.append(Player(player_id, player_name, team_number))
+            player = self[player_id]
+            player.team.remove_player(player)
+        self.get_team(team_number).add_player(Player(player_id, player_name))
 
     def remove(self, player_id):
-        for i, player in enumerate(self.players):
-            if player.id == player_id:
-                self.players.pop(i)
+        if player_id in self:
+            player = self[player_id]
+            player.team.remove_player(player)
 
-    def get_player_team(self, player_id):
-        return self.teams[self[player_id].team_number]
+    def get_all(self):
+        return [player for team in self.teams for player in team.players]
 
-    def get_player_opposite_team(self, player_id):
-        return self.teams[Team.other_team(self[player_id].team_number)]
+    def get_all_echku_sorted(self):
+        return sorted(self.get_all(), key=lambda player: player.index)
 
-    def authorised(self):
-        return [player.id for player in self.players if player.is_authorised]
+    def get_team(self, team_number):
+        return self.teams[team_number]
 
-    def authorise_player(self, index=None):
-        if index is None:
-            self.authorised_player = self.echku
-        else:
-            self.authorised_player = index
-        for i, player in enumerate(self.players):
-            player.is_authorised = (i == self.authorised_player)
+    def authorise_echku_player(self):
+        players = self.get_all_echku_sorted()
+        self.authorised_player = players[0]
+        for player in players:
+            player.is_authorised = player == self.authorised_player
 
     def authorise_next_player(self):
-        self.authorise_player((self.authorised_player + 1) % len(self.players))
+        players = self.get_all_echku_sorted()
+        self.authorised_player = players[(self.authorised_player.index + 1) % len(players)]
+        for player in players:
+            player.is_authorised = player == self.authorised_player
 
-    def authorise_team(self, team_number=None):
-        if team_number is None:
-            team_number = self.players[self.echku].team_number
-        self.authorised_team = team_number
-        for player in self.players:
-            player.is_authorised = (player.team_number == team_number)
+    def other_team(self, team):
+        if team.number == 0:
+            return self.teams[1]
+        return self.teams[0]
 
-    def authorise_opposite_team(self, player_id):
-        self.authorise_team(Team.other_team(self[player_id].team_number))
+    def authorise_team(self, team):
+        self.authorised_team = team
+        team.authorise(True)
+        self.other_team(team).authorise(False)
 
-    def authorise_next_team(self):
-        self.authorise_team(Team.other_team(self.authorised_team))
-
-    def by_team(self, team_number):
-        return [player for player in self.players if player.team_number == team_number]
+    def authorise_echku_team(self):
+        team = self.get_all_echku_sorted()[0].team
+        team.authorise(True)
+        self.other_team(team).authorise(False)
 
     def can_start(self):
-        return len(self.by_team(0)) == len(self.by_team(1)) and (
-            len(self.by_team(0)) == 1 or len(self.by_team(0)) == 2)
+        team_0_size = len(self.get_team(0))
+        return team_0_size == len(self.get_team(1)) and (team_0_size == 1 or team_0_size == 2)
 
-    def sort(self):
-        if len(self.players) == 2:
-            return
-        for i in range(len(self.players) - 1):
-            if self.players[i].team_number == self.players[i + 1].team_number:
-                self.players[i], self.players[i + 1] = self.players[i + 1], self.players[i]
+    def set_initial_echku(self):
+        index = 0
+        for i in range(len(self.teams[0])):
+            for team in self.teams:
+                team.players[i].index = index
+                index = index + 1
+        self.echku = self.get_all_echku_sorted()[0]
 
-    def set_echku(self, n=None):
-        if n is not None:
-            self.echku = n
-        else:
-            self.echku = (self.echku + 1) % len(self.players)
-
-    def by_echku(self):
-        return self.players[self.echku:] + self.players[:self.echku]
+    def set_echku(self):
+        players = self.get_all_echku_sorted()
+        for player in players:
+            player.index = (player.index + 1) % len(players)
+        self.echku = self.get_all_echku_sorted()[0]
 
     def __iter__(self):
-        return iter(self.players)
+        return iter(self.get_all())
 
     def __contains__(self, player_id):
-        return player_id in [player.id for player in self.players]
+        return player_id in [player.id for player in self.get_all()]
 
     def __getitem__(self, player_id):
-        for player in self.players:
-            if player.id == player_id:
-                return player
+        for other in self.get_all():
+            if player_id == other.id:
+                return other
         raise IndexError
 
 class Team:
-    def __init__(self):
+    def __init__(self, number):
+        self.number = number
         self.score = 0
         self.said = ""
-
-    @classmethod
-    def other_team(cls, team_number):
-        return (team_number + 1) % 2
+        self.is_authorised = False
+        self.players = []
 
     def add_score(self, score):
         self.score += score
         if self.score >= Game.score_max:
             raise TeamWonException
+
+    def add_player(self, player):
+        if player not in self.players:
+            player.team = self
+            self.players.append(player)
+
+    def remove_player(self, player):
+        if player in self.players:
+            player.team = None
+            self.players.remove(player)
+
+    def authorise(self, yes_or_no):
+        for player in self.players:
+            player.is_authorised = yes_or_no
+
+    def toggle_authorisation(self):
+        for player in self.players:
+            player.is_authorised = not player.is_authorised
+
+    def __iter__(self):
+        return iter(self.players)
+
+    def __contains__(self, player):
+        return player in self.players
+
+    def __len__(self):
+        return len(self.players)
 
 
 class GameState:
@@ -299,10 +327,16 @@ class GameState:
         return self.actions
 
     def players_authorised(self):
-        return self.players.authorised()
+        return [p.id for p in self.players.get_all() if p.is_authorised]
 
     def is_player_authorised(self, player_id):
         return player_id in self.players_authorised()
+
+    def authorise_next_player(self):
+        self.players.authorise_next_player()
+
+    def authorise_opposite_team(self, player_id):
+        self.players.authorise_team(self.players.other_team(self.players[player_id].team))
 
     def handle(self, action, player_id, *args):
         raise NotImplementedError
@@ -353,8 +387,7 @@ class Waiting(GameState):
     def clean_up(self):
         for player in self.players:
             player.cards = sorted(self.packet.take(4))
-        self.players.sort()
-        self.players.set_echku(0)
+        self.players.set_initial_echku()
 
 
 class Speaking(GameState):
@@ -364,16 +397,16 @@ class Speaking(GameState):
 
     def handle(self, action, player_id, *args):
         if action == "mus":
-            self.players.get_player_team(player_id).said = "mus"
+            self.players[player_id].team.said = "mus"
             if all(team.said == "mus" for team in self.players.teams):
                 return "Trading"
-            self.players.authorise_next_team()
+            self.authorise_opposite_team(player_id)
             return "Speaking"
         elif action == "mintza":
             return "Haundia"
 
     def prepare(self):
-        self.players.authorise_team()
+        self.players.authorise_echku_team()
 
     def clean_up(self):
         for team in self.players.teams:
@@ -433,14 +466,14 @@ class BetState(GameState):
     def compute_winner(self):
         if not self.deffered:
             return
-        echku_order = self.players.by_echku()
+        echku_order = self.players.get_all_echku_sorted()
         for i in range(len(echku_order)):
             for j in range(i, len(echku_order)):
                 hand_1 = self.HandType(echku_order[i].cards)
                 hand_2 = self.HandType(echku_order[j].cards)
                 if hand_1 < hand_2:
                     echku_order[i], echku_order[j] = echku_order[j], echku_order[i]
-        self.winner = echku_order[0].team_number
+        self.winner = echku_order[0].team
 
     def compute_bonus(self):
         if self.has_bonus and self.engaged:
@@ -461,7 +494,7 @@ class BetState(GameState):
         return actions
 
     def prepare(self):
-        self.players.authorise_player()
+        self.players.authorise_echku_player()
         self.winner = None
         self.bet = 1
         self.deffered = True
@@ -469,12 +502,6 @@ class BetState(GameState):
         self.hor_daged = False
         self.proposal = 0
         self.bonus = 0
-
-    def authorise_next_player(self):
-        self.players.authorise_next_player()
-
-    def authorise_opposite_team(self, player_id):
-        self.players.authorise_opposite_team(player_id)
 
     def everybody_is_mus(self):
         return self.players.authorised_player == self.players.echku
@@ -508,9 +535,9 @@ class BetState(GameState):
             return self.handle("gehiago", player_id, str(bet))
         elif action == "tira":
             self.deffered = False
-            self.winner = Team.other_team(self.players[player_id].team_number)
+            self.winner = self.players.other_team(self.players[player_id].team)
             try:
-                self.players.get_player_opposite_team(player_id).add_score(self.bet)
+                self.players.other_team(self.players[player_id].team).add_score(self.bet)
             except TeamWonException:
                 return "Finished"
             return self.next_state
@@ -561,7 +588,7 @@ class Pariak(BetState):
 
     def authorise_next_player(self):
         self.players.authorise_next_player()
-        while not self.players.players[self.players.authorised_player].has_hand:
+        while not self.players.authorised_player.has_hand:
             self.players.authorise_next_player()
 
     def handle(self, action, player_id, *args):
@@ -586,8 +613,8 @@ class Pariak(BetState):
             self.deffered = False
             self.bet = 0
             return
-        if not (any(player.has_hand for player in self.players.by_team(0)) and
-                any(player.has_hand for player in self.players.by_team(1))):
+        if not (any(player.has_hand for player in self.players.get_team(0)) and
+                any(player.has_hand for player in self.players.get_team(1))):
             self.compute_winner()
             self.no_bet = True
             self.bet = 0
@@ -630,8 +657,8 @@ class Jokua(BetState):
         for player in self.players:
             player.has_game = JokuaHand(player.cards).has_game()
         if any(player.has_game for player in self.players):
-            if not (any(player.has_game for player in self.players.by_team(0)) and
-                    any(player.has_game for player in self.players.by_team(1))):
+            if not (any(player.has_game for player in self.players.get_team(0)) and
+                    any(player.has_game for player in self.players.get_team(1))):
                 self.compute_winner()
                 self.no_bet = True
                 self.bet = 0
@@ -708,7 +735,7 @@ class Game:
         return self.states[self.current]
 
     def can_join_team(self, team_number):
-        return len(self.players.by_team(team_number)) < 2
+        return len(self.players.get_team(team_number)) < 2
 
     def action(self, action, player_id, *args):
         #print("Received action '" + action +"' from", player_id, "with args:", *args)
