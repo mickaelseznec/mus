@@ -355,7 +355,7 @@ class GameState:
         pass
 
 
-class Waiting(GameState):
+class WaitingRoom(GameState):
     def __init__(self, players, packet):
         super().__init__(players, packet)
         self.actions = ["add_player", "remove_player", "start"]
@@ -375,10 +375,10 @@ class Waiting(GameState):
                     not 0 <= int(args[1]) <= 1):
                 raise ForbiddenActionException
             self.players.add(player_id, args[0], int(args[1]))
-            return "Waiting"
+            return "waiting_room"
         elif action == "remove_player":
             self.players.remove(player_id)
-            return "Waiting"
+            return "waiting_room"
         elif action == "start":
             if not self.players.can_start:
                 raise ForbiddenActionException
@@ -719,7 +719,7 @@ class Game:
         self.players = PlayerHolder()
         self.packet = Packet()
         self.states = {
-            "Waiting": Waiting(self.players, self.packet),
+            "waiting_room": WaitingRoom(self.players, self.packet),
             "Speaking": Speaking(self.players, self.packet),
             "Trading": Trading(self.players, self.packet),
             "Haundia": Haundia(self.players, self.packet),
@@ -728,7 +728,7 @@ class Game:
             "Jokua": Jokua(self.players, self.packet),
             "Finished": Finished(self.players, self.packet, self),
         }
-        self.current = "Waiting"
+        self.current = "waiting_room"
 
     @property
     def state(self):
@@ -737,7 +737,7 @@ class Game:
     def can_join_team(self, team_number):
         return len(self.players.get_team(team_number)) < 2
 
-    def action(self, action, player_id, *args):
+    def do(self, action, player_id, *args):
         #print("Received action '" + action +"' from", player_id, "with args:", *args)
         next_state = self.states[self.current].run(action, player_id, *args)
         if next_state != self.current:

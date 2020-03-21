@@ -1,0 +1,24 @@
+texts:
+    inline_answer: "Démarrer une nouvelle partie !"
+    loading: "Chargement..."
+
+    waiting_room:
+        "<b>Bienvenue sur HordagoBot !</b>\n\n\
+         Je serai votre assistant pour cette partie de Mus.\n\
+         Vous pouvez une introduction aux règles du jeu \
+         <a href=\"https://www.federation-mus.fr/jeu-mus/\">ici</a>.\n\n\
+         Équipe 1:\n
+         {}\n
+         Équipe 2:\n
+         {}"
+
+keyboards:
+    loading: "Chargement..."
+
+    start_game: "C'est parti 👍"
+
+    join_team:
+        1: "Rejoindre l'équipe 1"
+        2: "Rejoindre l'équipe 2"
+
+    leave_game: "Adieu 🏃"

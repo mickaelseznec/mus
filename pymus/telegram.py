@@ -1,14 +1,16 @@
 #! /usr/bin/env python3
 
 import pickle
-import sys
-
 import redis
+import sys
+import yaml
+import telepot
+
+from telepot import namedtuple as tnp
+from telepot.loop import MessageLoop
 
 import mus
 
-import telepot
-from telepot import namedtuple as tnp
 
 class HordagoDatabase():
     def __init__(self):
@@ -42,49 +44,52 @@ class HordagoDatabase():
 
 
 class HordagoTelegramHandler:
+    CACHE_TIME=0 #TODO:Change me when stable
 
     def __init__(self, token):
         self.bot = telepot.Bot(token)
         self.database = HordagoDatabase()
-        self.initial_greeting = (
-            '<b>Welcome to the mus bot!</b>\n\n'
-            'I will be your assistant during this game.\n'
-            'Mus is a game from the <i>basque country</i>,\n'
-            'if you have never heard of it, please see game rules '
-            '<a href="https://en.wikipedia.org/wiki/Mus_(card_game)">here</a>.\n')
 
-        self.initial_response = [
-            tnp.InlineQueryResultArticle(
-                id='play',
-                title='Play mus',
-                input_message_content=tnp.InputTextMessageContent(message_text=self.initial_greeting,
-                                                                  parse_mode='HTML',
-                                                                  disable_web_page_preview=True),
-                reply_markup=tnp.InlineKeyboardMarkup(
-                    inline_keyboard=[[tnp.InlineKeyboardButton(text='Join team 1',
-                                                               callback_data="join_team_1"),
-                                      tnp.InlineKeyboardButton(text='Join team 2',
-                                                               callback_data="join_team_2")
-                                     ]]
-                )
-            )
-        ]
+        with open("static/telegram_text_interface.yaml") as f:
+            data = yaml.safe_load(f)
+        self.texts = data["texts"]
+        self.keyboards = data["keyboards"]
 
     def start(self):
-        self.bot.message_loop({'inline_query': self.on_inline_query,
-                               'chosen_inline_result': self.on_chosen_inline_result,
-                               'callback_query': self.on_callback_query},
-                              run_forever='Listening ...')
+        MessageLoop(
+            self.bot,
+            {'inline_query': self.on_inline_query,
+             'chosen_inline_result': self.on_chosen_inline_result,
+             'callback_query': self.on_callback_query}
+        ).run_forever()
 
     def on_inline_query(self, msg):
-        self.bot.answerInlineQuery(msg['id'], self.initial_response, cache_time=CACHE_TIME)
+        """ Displays always the same result whatever the user input.
+
+        Must give a mockup text an keyboard to get further interaction with the users."""
+
+        play_mus_inline_answer = [
+            tnp.InlineQueryResultArticle(
+                id='start',
+                title=self.texts["inline_answer"],
+                input_message_content=tnp.InputTextMessageContent(
+                    message_text=self.texts["loading"]),
+                reply_markup=tnp.InlineKeyboardMarkup(
+                    inline_keyboard=[[tnp.InlineKeyboardButton(
+                        text=self.keyboards["loading"],
+                        callback_data="None")]])
+            )]
+
+        self.bot.answerInlineQuery(msg['id'], play_mus_inline_answer, cache_time=self.CACHE_TIME)
 
     def on_chosen_inline_result(self, msg):
+        """ Creates a new game and automatically adds first player"""
+
         from_user, inline_message_id = msg['from'], msg['inline_message_id']
 
         #Automaticaly add first player
         game = self.database.new_game(inline_message_id)
-        game.action("add_player", from_user['id'], from_user['first_name'], "0")
+        game.do("add_player", from_user['id'], from_user['first_name'], "0")
         self.database.save(game)
 
         self.update_text(inline_message_id, game)
@@ -108,9 +113,9 @@ class HordagoTelegramHandler:
             try:
                 split = query_data.split('.')
                 if split[0] == 'add_player':
-                    game.action(split[0], from_id, msg['from']['first_name'], *split[1:])
+                    game.do(split[0], from_id, msg['from']['first_name'], *split[1:])
                 else:
-                    game.action(split[0], from_id, *split[1:])
+                    game.do(split[0], from_id, *split[1:])
             except mus.WrongPlayerException:
                 self.bot.answerCallbackQuery(query_id, text="It's not your turn!")
             except mus.ForbiddenActionException:
@@ -125,14 +130,20 @@ class HordagoTelegramHandler:
 
     def compute_message(self, game):
         msg = ""
-        if game.current == "Waiting":
-            msg += self.initial_greeting
-            msg += "\n<b>Team 1:</b>\n" + "\n".join(player.name for player in game.players.get_team(0))
-            msg += "\n<b>Team 2:</b>\n" + "\n".join(player.name for player in game.players.get_team(1))
+
+        if game.current == "waiting_room":
+            print([player.name for player in game.players.get_team(0)])
+            print([player.name for player in game.players.get_team(1)])
+            return self.texts["waiting_room"].format(
+                "\n\t".join([player.name for player in game.players.get_team(0)]),
+                "\n\t".join([player.name for player in game.players.get_team(1)])
+            )
+
         elif game.current == "Trading":
             msg += "<b>Choose which cards you want to change.</b>\n"
             msg += "\n<b>Team 1:</b>\n" + "\n".join(player.name + " will change " + str(len(player.asks)) + " card(s)." for player in game.players.get_team(0))
             msg += "\n<b>Team 2:</b>\n" + "\n".join(player.name + " will change " + str(len(player.asks)) + " card(s)." for player in game.players.get_team(1))
+
         elif game.current == "Finished":
             if game.players.has_finished():
                 msg += "Party finished!\n"
@@ -193,17 +204,24 @@ class HordagoTelegramHandler:
         return msg
 
     def compute_keyboard(self, game):
-        kb = []
-        if game.current == "Waiting":
-            kb.append([tnp.InlineKeyboardButton(text='👍 Start Game', callback_data="start")])
-            kb_join = []
-            kb_join.append(tnp.InlineKeyboardButton(text='Join team 1',
-                                                    callback_data="add_player.0"))
-            kb_join.append(tnp.InlineKeyboardButton(text='Join team 2',
-                                                    callback_data="add_player.1"))
-            kb.append(kb_join)
-            kb.append([tnp.InlineKeyboardButton(text='🏃 Leave', callback_data="remove_player")])
+        if game.current == "waiting_room":
+            join_teams = [
+                tnp.InlineKeyboardButton(text=self.keyboards["join_team"][1],
+                                         callback_data="add_player.0"),
+                tnp.InlineKeyboardButton(text=self.keyboards["join_team"][2],
+                                         callback_data="add_player.1"),
+            ]
+
+            kb = [
+                [tnp.InlineKeyboardButton(text=self.keyboards["start_game"],
+                                          callback_data="start")],
+                join_teams,
+                [tnp.InlineKeyboardButton(text=self.keyboards["leave_game"],
+                                          callback_data="remove_player")]
+            ]
             return tnp.InlineKeyboardMarkup(inline_keyboard=kb)
+
+        kb = []
         if game.current == "Finished":
             if game.players.has_finished():
                 kb.append([tnp.InlineKeyboardButton(text='New Game', callback_data="ok")])
@@ -211,15 +229,18 @@ class HordagoTelegramHandler:
                 kb.append([tnp.InlineKeyboardButton(text='OK', callback_data="ok")])
             return tnp.InlineKeyboardMarkup(inline_keyboard=kb)
         kb.append([tnp.InlineKeyboardButton(text='Show cards', callback_data="show_cards")])
+
         if game.current == "Speaking":
             kb.append([tnp.InlineKeyboardButton(text='Mintza', callback_data="mintza"),
                        tnp.InlineKeyboardButton(text='Mus', callback_data="mus")])
+
         elif game.current == "Trading":
             kb.append([tnp.InlineKeyboardButton(text='Change #1', callback_data="change.0"),
                        tnp.InlineKeyboardButton(text='Change #2', callback_data="change.1"),
                        tnp.InlineKeyboardButton(text='Change #3', callback_data="change.2"),
                        tnp.InlineKeyboardButton(text='Change #4', callback_data="change.3")])
             kb.append([tnp.InlineKeyboardButton(text='Confirm', callback_data="confirm")])
+
         else:
             possible_actions = game.states[game.current].actions_authorised()
             if 'ok' in possible_actions:
