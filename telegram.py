@@ -131,12 +131,12 @@ class HordagoTelegramHandler:
         msg = ""
         if game.current == "Waiting":
             msg += self.initial_greeting
-            msg += "\n<b>Team 1:</b>\n" + "\n".join(player.name for player in game.players.by_team(0))
-            msg += "\n<b>Team 2:</b>\n" + "\n".join(player.name for player in game.players.by_team(1))
+            msg += "\n<b>Team 1:</b>\n" + "\n".join(player.name for player in game.players.get_team(0))
+            msg += "\n<b>Team 2:</b>\n" + "\n".join(player.name for player in game.players.get_team(1))
         elif game.current == "Trading":
             msg += "<b>Choose which cards you want to change.</b>\n"
-            msg += "\n<b>Team 1:</b>\n" + "\n".join(player.name + " will change " + str(len(player.asks)) + " card(s)." for player in game.players.by_team(0))
-            msg += "\n<b>Team 2:</b>\n" + "\n".join(player.name + " will change " + str(len(player.asks)) + " card(s)." for player in game.players.by_team(1))
+            msg += "\n<b>Team 1:</b>\n" + "\n".join(player.name + " will change " + str(len(player.asks)) + " card(s)." for player in game.players.get_team(0))
+            msg += "\n<b>Team 2:</b>\n" + "\n".join(player.name + " will change " + str(len(player.asks)) + " card(s)." for player in game.players.get_team(1))
         elif game.current == "Finished":
             if game.players.has_finished():
                 msg += "Party finished!\n"
@@ -150,12 +150,12 @@ class HordagoTelegramHandler:
                 if state.bonus > 0:
                     msg += " + " + str(state.bonus) + " bonus"
                 if state.bet > 0 or state.bonus > 0:
-                    msg += " -> <b>Team " + str(state.winner + 1) + "</b>"
+                    msg += " -> <b>Team " + str(state.winner.number + 1) + "</b>"
             msg += "\n"
             for i in range(2):
                 msg += "\nTeam " + str(i + 1) + ": <b>" + str(game.players.teams[i].score) + "</b>"
                 player_msg = ""
-                for player in game.players.by_team(i):
+                for player in game.players.get_team(i):
                     player_msg += player.name + " had " + ", ".join(str(card) for card in player.get_cards())
                 msg += "\n" + player_msg
 
@@ -171,7 +171,7 @@ class HordagoTelegramHandler:
             for i in range(2):
                 msg += "\nTeam " + str(i + 1) + ": <b>" + str(game.players.teams[i].score) + "</b>\n"
                 player_msg = ""
-                for player in game.players.by_team(i):
+                for player in game.players.get_team(i):
                     player_msg += player.name
                     if game.states[game.current].is_player_authorised(player.id):
                         player_msg = "<b>" + player_msg + "</b>"
@@ -190,7 +190,7 @@ class HordagoTelegramHandler:
                         if state.deffered:
                             msg += "?"
                         else:
-                            msg += str(state.winner + 1)
+                            msg += str(state.winner.number + 1)
                     else:
                         msg += "\n" + game.bet_states[i] + ": no bet"
 

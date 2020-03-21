@@ -478,7 +478,7 @@ class BetState(GameState):
     def compute_bonus(self):
         if self.has_bonus and self.engaged:
             for player in self.players:
-                if player.team_number == self.winner:
+                if player.team == self.winner:
                     self.bonus += self.HandType(player.cards).bonus()
 
     def actions_authorised(self):
@@ -531,7 +531,7 @@ class BetState(GameState):
             return self.own_state
         elif action == "hordago":
             self.hor_daged = True
-            bet = Game.score_max - self.players.teams[self.players[player_id].team_number].score
+            bet = Game.score_max - self.players.teams[self.players[player_id].team.number].score
             return self.handle("gehiago", player_id, str(bet))
         elif action == "tira":
             self.deffered = False
@@ -688,8 +688,8 @@ class Finished(GameState):
                 for state in Game.bet_states:
                     if self.game.states[state].winner is not None:
                         if self.game.states[state].deffered:
-                            self.players.teams[self.game.states[state].winner].add_score(self.game.states[state].bet)
-                        self.players.teams[self.game.states[state].winner].add_score(self.game.states[state].bonus)
+                            self.players.teams[self.game.states[state].winner.number].add_score(self.game.states[state].bet)
+                        self.players.teams[self.game.states[state].winner.number].add_score(self.game.states[state].bonus)
             except TeamWonException:
                 self.game.finished = True
 
@@ -700,7 +700,7 @@ class Finished(GameState):
         self.packet.restore()
         for player in self.players:
             player.cards = sorted(self.packet.take(4))
-        self.players.sort()
+        self.players.get_all_echku_sorted()
         if self.players.has_finished():
             for team in self.players.teams:
                 team.score = 0
