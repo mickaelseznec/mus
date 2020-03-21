@@ -1,3 +1,6 @@
+import sys
+sys.path.append("pymus")
+
 import unittest
 import mus
 
