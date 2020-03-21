@@ -1,6 +1,5 @@
 #! /usr/bin/env python3
 
-import logging
 import pickle
 import sys
 
@@ -10,9 +9,6 @@ import mus
 
 import telepot
 from telepot import namedtuple as tnp
-
-DEBUG_LOG = False
-CACHE_TIME = 0
 
 class HordagoDatabase():
     def __init__(self):
@@ -257,14 +253,3 @@ class HordagoTelegramHandler:
                                  reply_markup=self.compute_keyboard(game),
                                  parse_mode='HTML',
                                  disable_web_page_preview=True)
-
-
-def main():
-    if DEBUG_LOG:
-        logging.basicConfig(level=logging.DEBUG,
-                            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    telegram_handler = HordagoTelegramHandler(sys.argv[1])
-    telegram_handler.start()
-
-if __name__ == "__main__":
-    main()
