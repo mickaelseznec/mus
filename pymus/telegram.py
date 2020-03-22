@@ -31,16 +31,17 @@ class HordagoDatabase():
     def save(self, game):
         self.games.set(game.game_id, pickle.dumps(game))
 
-    def response_has_changed(self, text, keyboard, game_id):
-        if (self.games.get("text" + str(game_id)) is None or
-                self.games.get("text" + str(game_id)).decode('utf-8') != text):
-            self.games.set("text" + str(game_id), text)
-            return True
-        if (self.games.get("kb" + str(game_id)) is None or
-                self.games.get("kb" + str(game_id)).decode('utf-8') != keyboard):
-            self.games.set("text" + str(game_id), keyboard)
-            return True
-        return False
+    def response_has_changed(self, game_id, text, keyboard):
+        old_text = self.games.get("{}_{}".format(game_id, "text"))
+        old_keyboard = self.games.get("{}_{}".format(game_id, "keyboard"))
+
+        text_changed = old_text is None or old_text.decode("utf-8") != text
+        keyboard_changed = old_keyboard is None or old_keyboard.decode("utf-8") != str(keyboard)
+
+        self.games.set("{}_{}".format(game_id, "text"), text)
+        self.games.set("{}_{}".format(game_id, "keyboard"), str(keyboard))
+
+        return text_changed or keyboard_changed
 
 
 class HordagoTelegramHandler:
@@ -52,8 +53,11 @@ class HordagoTelegramHandler:
 
         with open("static/telegram_text_interface.yaml") as f:
             data = yaml.safe_load(f)
+
         self.texts = data["texts"]
         self.keyboards = data["keyboards"]
+        self.states = data["states"]
+        self.card_colors = data["card_colors"]
 
     def start(self):
         MessageLoop(
@@ -100,14 +104,15 @@ class HordagoTelegramHandler:
         print('Callback Query:', query_id, from_id, query_data, inline_message_id)
 
         if not self.database.has_game(inline_message_id):
-            self.bot.answerCallbackQuery(query_id, text='Error while retrieving your game, sorry')
+            self.bot.answerCallbackQuery(query_id, text=self.texts["no_data"])
             return
 
         game = self.database.get(inline_message_id)
 
         if query_data == 'show_cards':
             cards = game.players[from_id].get_cards()
-            answer = "\n".join("#" + str(i + 1) + ": " + str(card) for i, card in enumerate(cards))
+            answer = "\n".join("#{}:  {} {}".format(i + 1, card.value, self.card_colors[card.color])
+                               for i, card in enumerate(cards))
             self.bot.answerCallbackQuery(query_id, text=answer, show_alert=True)
         else:
             try:
@@ -117,9 +122,9 @@ class HordagoTelegramHandler:
                 else:
                     game.do(split[0], from_id, *split[1:])
             except mus.WrongPlayerException:
-                self.bot.answerCallbackQuery(query_id, text="It's not your turn!")
+                self.bot.answerCallbackQuery(query_id, text=self.texts["not_your_turn"])
             except mus.ForbiddenActionException:
-                self.bot.answerCallbackQuery(query_id, text="You can't do that!")
+                self.bot.answerCallbackQuery(query_id, text=self.texts["cannot_do_that"])
             else:
                 self.bot.answerCallbackQuery(query_id)
 
@@ -132,74 +137,104 @@ class HordagoTelegramHandler:
         msg = ""
 
         if game.current == "waiting_room":
-            print([player.name for player in game.players.get_team(0)])
-            print([player.name for player in game.players.get_team(1)])
             return self.texts["waiting_room"].format(
                 "\n\t".join([player.name for player in game.players.get_team(0)]),
                 "\n\t".join([player.name for player in game.players.get_team(1)])
             )
 
-        elif game.current == "Trading":
-            msg += "<b>Choose which cards you want to change.</b>\n"
-            msg += "\n<b>Team 1:</b>\n" + "\n".join(player.name + " will change " + str(len(player.asks)) + " card(s)." for player in game.players.get_team(0))
-            msg += "\n<b>Team 2:</b>\n" + "\n".join(player.name + " will change " + str(len(player.asks)) + " card(s)." for player in game.players.get_team(1))
+        if game.current == "Trading":
+            exchanges_team_1 = [self.texts["exchange"].format(player.name, len(player.asks))
+                                for player in game.players.get_team(0)]
 
-        elif game.current == "Finished":
-            if game.players.has_finished():
-                msg += "Party finished!\n"
-                msg += "\nTeam " + str(game.players.winner_team() + 1) + " HAS WON, CONGRATS!\n"
-            else:
-                msg += "Turn finished!\n"
-            msg += "\n<b>Summary:</b>"
+            exchanges_team_2 = [self.texts["exchange"].format(player.name, len(player.asks))
+                                for player in game.players.get_team(1)]
+
+            return self.texts["trading"].format("\n".join(exchanges_team_1),
+                                                "\n".join(exchanges_team_2))
+
+        if game.current == "Finished":
+
+            msg = (self.texts["finished"] if not game.players.has_finished() else
+                   self.texts["end_game"].format(game.players.winner_team() + 1))
+
+            msg += self.texts["summary"]
+
+            states_summary = []
             for state_name in game.bet_states:
                 state = game.states[state_name]
-                msg += "\n" + state_name + ": " + str(state.bet)
-                if state.bonus > 0:
-                    msg += " + " + str(state.bonus) + " bonus"
-                if state.bet > 0 or state.bonus > 0:
-                    msg += " -> <b>Team " + str(state.winner.number + 1) + "</b>"
-            msg += "\n"
-            for i in range(2):
-                msg += "\nTeam " + str(i + 1) + ": <b>" + str(game.players.teams[i].score) + "</b>"
-                player_msg = ""
-                for player in game.players.get_team(i):
-                    player_msg += player.name + " had " + ", ".join(str(card) for card in player.get_cards())
-                msg += "\n" + player_msg
 
-        else:
-            if game.current == "Speaking":
-                msg += "<b>Mus or mintza?</b>\n"
-            else:
-                msg += "<b>" + game.current + "</b>\n"
-                msg += "Current bet: " + str(game.states[game.current].bet) + "\n"
-                if game.states[game.current].proposal > 0:
-                    msg += "Proposal: " + str(game.states[game.current].proposal) + "\n"
-            msg += "\nPlayers in <b>bold</b> can speak.\nRemember that you play in the name of your team!\n"
+                state_bet = self.texts["state_bet"].format(
+                    self.states[state_name],
+                    state.bet
+                )
+
+                state_bonus = (self.texts["state_bonus"].format(state.bonus)
+                               if state.bonus > 0 else "")
+                state_team = (self.texts["state_team"].format(state.winner.number + 1)
+                              if (state.bet > 0 or state.bonus > 0) else "")
+
+                states_summary.append(state_bet + state_bonus + state_team)
+
+            msg += "\n".join(states_summary) + "\n\n"
+
+            team_messages = []
             for i in range(2):
-                msg += "\nTeam " + str(i + 1) + ": <b>" + str(game.players.teams[i].score) + "</b>\n"
-                player_msg = ""
-                for player in game.players.get_team(i):
-                    player_msg += player.name
-                    if game.states[game.current].is_player_authorised(player.id):
-                        player_msg = "<b>" + player_msg + "</b>"
-                    if game.current == "Pariak":
-                        player_msg = player_msg + ": " + ("Bai" if player.has_hand else "Ez")
-                    elif game.current == "Jokua":
-                        player_msg = player_msg + ": " + ("Bai" if player.has_game else "Ez")
-                    player_msg += "\n"
-                msg += player_msg
-            if game.current in game.bet_states:
-                cur = game.bet_states.index(game.current)
-                for i in range(cur):
-                    state = game.states[game.bet_states[i]]
-                    if state.winner is not None:
-                        msg += "\n" + game.bet_states[i] + ": " + str(state.bet) + " -> Team "
-                        if state.deffered:
-                            msg += "?"
-                        else:
-                            msg += str(state.winner.number + 1)
-                    else:
-                        msg += "\n" + game.bet_states[i] + ": no bet"
+                intro = self.texts["team_score"].format(i + 1, game.players.teams[i].score)
+
+                player_cards = "\n".join([self.texts["show_cards"].format(
+                    player.name,
+                    ", ".join(str(card) for card in player.get_cards()))
+                                          for player in game.players.get_team(i)])
+                team_messages.append(intro + player_cards)
+
+            msg += "\n".join(team_messages)
+
+            return msg
+
+        msg = self.texts["title"].format(self.states[str(game.current)])
+        if not game.current == "Speaking":
+            msg += self.texts["current_bet"].format(game.states[game.current].bet)
+
+            if game.states[game.current].proposal > 0:
+                msg += self.texts["proposal"].format(game.states[game.current].proposal)
+
+        if game.current in game.bet_states:
+            msg += "\n"
+            current_state = game.bet_states.index(game.current)
+            state_summaries = []
+
+            for i in range(current_state):
+                state = game.states[game.bet_states[i]]
+
+                state_summary = (self.texts["state_summary"] if state.winner is not None
+                                    else self.texts["state_summary_empty"]).format(
+                                        self.states[game.bet_states[i]], state.bet,
+                                        ("?" if state.deffered else state.winner.number + 1))
+                state_summaries.append(state_summary)
+
+            msg += "\n ".join(state_summaries) + "\n\n"
+
+        team_messages = []
+        for i in range(2):
+            intro = self.texts["team_score"].format(i + 1, game.players.teams[i].score)
+
+            player_messages = []
+            for player in game.players.get_team(i):
+                player_name = (self.texts["active_player"]
+                               if game.states[game.current].is_player_authorised(player.id)
+                               else self.texts["inactive_player"]).format(player.name)
+
+                player_says = ""
+                if game.current == "Pariak":
+                    player_says = self.texts["bai"] if player.has_hand else self.texts["ez"]
+                elif game.current == "Jokua":
+                    player_says = self.texts["bai"] if player.has_game else self.texts["ez"]
+
+                player_messages.append(player_name + player_says)
+
+            team_messages.append(intro + "\n".join(player_messages))
+
+        msg += "\n".join(team_messages)
 
         return msg
 
@@ -265,12 +300,12 @@ class HordagoTelegramHandler:
         return tnp.InlineKeyboardMarkup(inline_keyboard=kb)
 
     def update_text(self, inline_message_id, game):
-        """if self.database.response_has_changed(self.compute_message(game),
-                                              self.compute_keyboard(game),
-                                              inline_message_id):
-                                              """
-        self.bot.editMessageText(inline_message_id,
-                                 self.compute_message(game),
-                                 reply_markup=self.compute_keyboard(game),
-                                 parse_mode='HTML',
-                                 disable_web_page_preview=True)
+        message_update = self.compute_message(game)
+        keyboard_update = self.compute_keyboard(game)
+
+        if self.database.response_has_changed(inline_message_id, message_update, keyboard_update):
+            self.bot.editMessageText(inline_message_id,
+                                    message_update,
+                                    reply_markup=keyboard_update,
+                                    parse_mode='HTML',
+                                    disable_web_page_preview=True)

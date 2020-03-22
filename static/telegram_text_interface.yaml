@@ -2,15 +2,42 @@ texts:
     inline_answer: "Démarrer une nouvelle partie !"
     loading: "Chargement..."
 
-    waiting_room:
-        "<b>Bienvenue sur HordagoBot !</b>\n\n\
-         Je serai votre assistant pour cette partie de Mus.\n\
-         Vous pouvez une introduction aux règles du jeu \
-         <a href=\"https://www.federation-mus.fr/jeu-mus/\">ici</a>.\n\n\
-         Équipe 1:\n
-         {}\n
-         Équipe 2:\n
-         {}"
+    waiting_room: "<b>Bienvenue sur HordagoBot !</b>\n\n\
+                   Je serai votre assistant pour cette partie de Mus.\n\
+                   Vous pouvez une introduction aux règles du jeu \
+                   <a href=\"https://www.federation-mus.fr/jeu-mus/\">ici</a>.\n\n\
+                   Équipe 1:\n\
+                   {}\n\
+                   Équipe 2:\n\
+                   {}"
+
+    trading: "Équipe 1:\n\
+              {}\n\
+              Équipe 2:\n\
+              {}\n\
+              <b>Choisi quelles cartes tu veux échanger.</b>\n"
+
+    exchange: "{} va échanger {} carte(s)."
+    finished: "<b>Fin du tour.</b>\n\n"
+    end_game: "<b>Partie terminée. L'équipe {} a gagné !</b>\n\n"
+    summary: "Résumé de la manche:\n"
+    state_bet: "Au {}: {} point(s) "
+    state_bonus: "+ {} bonus "
+    state_team: "-> équipe {}."
+    team_score: "Équipe {}: {} point(s).\n"
+    show_cards: "{} avait: {}\n."
+    title: "Manche : <b>{}</b>\n\n"
+    current_bet: "Pari en cours : {}\n"
+    proposal: "Proposition : {}\n"
+    inactive_player: "{}"
+    active_player: "<b>{}</b>"
+    bai: " : Bai"
+    ez: " : Ez"
+    state_summary: "{} : {} point(s) -> Équipe {}"
+    state_summary_empty: "{} : pas de pari"
+    cannot_do_that: "Action impossible"
+    not_your_turn: "Pas à ton tour !"
+    no_data: "Impossible de retrouver ta partie..."
 
 keyboards:
     loading: "Chargement..."
@@ -22,3 +49,18 @@ keyboards:
         2: "Rejoindre l'équipe 2"
 
     leave_game: "Adieu 🏃"
+
+states:
+    waiting_room: "Salle d'atente"
+    Trading: "Échanges"
+    Speaking: "Mus ou mintza ?"
+    Haundia: "Grand"
+    Tipia: "Petit"
+    Pariak: "Paires"
+    Jokua: "Jeu"
+
+card_colors:
+    Oros: "🟡"
+    Espadas: "🗡️"
+    Copas: "🏺"
+    Bastos: "🏑"
