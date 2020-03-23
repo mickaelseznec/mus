@@ -49,6 +49,20 @@ keyboards:
         2: "Rejoindre l'équipe 2"
 
     leave_game: "Adieu 🏃"
+    new_game: "Nouvelle partie 👍"
+    ok: "Ok"
+    show_cards: "Voir cartes"
+    mintza: "Mintza"
+    mus: "Mus"
+    change: "Changer #{}"
+    confirm: "Confirmer"
+
+    imido: "Imido"
+    paso: "Paso"
+    kanta: "Kanta"
+    tira: "Tira"
+    idoki: "Idoki"
+    hordago: "Hor Dago!"
 
 states:
     waiting_room: "Salle d'atente"
@@ -58,6 +72,14 @@ states:
     Tipia: "Petit"
     Pariak: "Paires"
     Jokua: "Jeu"
+
+basque_numbers:
+    1: "Bat"
+    2: "Bi"
+    3: "Hiru"
+    4: "Lau"
+    5: "Bost"
+    10: "Amar"
 
 card_colors:
     Oros: "🟡"

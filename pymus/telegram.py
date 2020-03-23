@@ -58,6 +58,7 @@ class HordagoTelegramHandler:
         self.keyboards = data["keyboards"]
         self.states = data["states"]
         self.card_colors = data["card_colors"]
+        self.numbers = data["basque_numbers"]
 
     def start(self):
         MessageLoop(
@@ -256,46 +257,44 @@ class HordagoTelegramHandler:
             ]
             return tnp.InlineKeyboardMarkup(inline_keyboard=kb)
 
-        kb = []
         if game.current == "Finished":
-            if game.players.has_finished():
-                kb.append([tnp.InlineKeyboardButton(text='New Game', callback_data="ok")])
-            else:
-                kb.append([tnp.InlineKeyboardButton(text='OK', callback_data="ok")])
+            kb = [[tnp.InlineKeyboardButton(text=self.keyboards["new_game"], callback_data="ok")
+                  if game.players.has_finished() else
+                  tnp.InlineKeyboardButton(text=self.keyboards["ok"], callback_data="ok")]]
+
             return tnp.InlineKeyboardMarkup(inline_keyboard=kb)
-        kb.append([tnp.InlineKeyboardButton(text='Show cards', callback_data="show_cards")])
+
+        kb = [[tnp.InlineKeyboardButton(text=self.keyboards["show_cards"], callback_data="show_cards")]]
 
         if game.current == "Speaking":
-            kb.append([tnp.InlineKeyboardButton(text='Mintza', callback_data="mintza"),
-                       tnp.InlineKeyboardButton(text='Mus', callback_data="mus")])
+            kb.append([tnp.InlineKeyboardButton(text=self.keyboards["mintza"], callback_data="mintza"),
+                       tnp.InlineKeyboardButton(text=self.keyboards["mus"], callback_data="mus")])
 
         elif game.current == "Trading":
-            kb.append([tnp.InlineKeyboardButton(text='Change #1', callback_data="change.0"),
-                       tnp.InlineKeyboardButton(text='Change #2', callback_data="change.1"),
-                       tnp.InlineKeyboardButton(text='Change #3', callback_data="change.2"),
-                       tnp.InlineKeyboardButton(text='Change #4', callback_data="change.3")])
-            kb.append([tnp.InlineKeyboardButton(text='Confirm', callback_data="confirm")])
+            choices = [tnp.InlineKeyboardButton(text=self.keyboards["change"].format(i),
+                                                callback_data="change.{}".format(i))
+                       for i in range(1, 5)]
+            kb += [choices[:2], choices[2:]]
+            kb.append([tnp.InlineKeyboardButton(text=self.keyboards["confirm"], callback_data="confirm")])
 
         else:
             possible_actions = game.states[game.current].actions_authorised()
             if 'ok' in possible_actions:
-                kb.append([tnp.InlineKeyboardButton(text='OK', callback_data="ok")])
+                kb.append([tnp.InlineKeyboardButton(text=self.keyboards["ok"], callback_data="ok")])
                 return tnp.InlineKeyboardMarkup(inline_keyboard=kb)
             if 'paso' in possible_actions:
-                kb.append([tnp.InlineKeyboardButton(text='Imido', callback_data="imido"),
-                           tnp.InlineKeyboardButton(text='Paso', callback_data="paso")])
+                kb.append([tnp.InlineKeyboardButton(text=self.keyboards["imido"], callback_data="imido"),
+                           tnp.InlineKeyboardButton(text=self.keyboards["paso"], callback_data="paso")])
             if 'kanta' in possible_actions:
-                kb.append([tnp.InlineKeyboardButton(text='Kanta', callback_data="kanta"),
-                           tnp.InlineKeyboardButton(text='Tira', callback_data="tira")])
+                kb.append([tnp.InlineKeyboardButton(text=self.keyboards["kanta"], callback_data="kanta"),
+                           tnp.InlineKeyboardButton(text=self.keyboards["tira"], callback_data="tira")])
             if 'idoki' in possible_actions:
-                kb.append([tnp.InlineKeyboardButton(text='Idoki', callback_data="idoki"),
-                           tnp.InlineKeyboardButton(text='Tira', callback_data="tira")])
+                kb.append([tnp.InlineKeyboardButton(text=self.keyboards["idoki"], callback_data="idoki"),
+                           tnp.InlineKeyboardButton(text=self.keyboards["tira"], callback_data="tira")])
             if 'gehiago' in possible_actions:
-                basque_numbers = [("Bat", 1), ("Bi", 2), ("Hiru", 3), ("Lau", 4), ("Bost", 5), ("Amar", 10)]
-                gehiago = [tnp.InlineKeyboardButton(text=name, callback_data="gehiago." + str(i)) for name, i in basque_numbers]
-                kb.append(gehiago[:3])
-                kb.append(gehiago[3:])
-                kb.append([tnp.InlineKeyboardButton(text='Hor dago!', callback_data="hordago")])
+                gehiago = [tnp.InlineKeyboardButton(text=self.numbers[i], callback_data="gehiago.{}".format(i)) for i in [1, 2, 3, 4, 5, 10]]
+                kb += [gehiago[:3], gehiago[3:]]
+                kb.append([tnp.InlineKeyboardButton(text=self.keyboards["hordago"], callback_data="hordago")])
 
         return tnp.InlineKeyboardMarkup(inline_keyboard=kb)
 
