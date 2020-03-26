@@ -101,6 +101,10 @@ class PlayerManager:
         team.authorise(True)
         self.other_team(team).authorise(False)
 
+    def record_scores(self):
+        for team in self.teams:
+            team.record_score()
+
     def can_start(self):
         team_0_size = len(self.get_team(0))
         return team_0_size == len(self.get_team(1)) and (team_0_size == 1 or team_0_size == 2)
@@ -134,14 +138,19 @@ class PlayerManager:
 class Team:
     def __init__(self, number):
         self.number = number
+        self.begin_score = 0
         self.score = 0
         self.said = ""
         self.is_authorised = False
         self.players = []
 
+    def record_score(self):
+        self.begin_score = self.score
+
     def add_score(self, score):
         self.score += score
         if self.score >= Game.score_max:
+            self.score = Game.score_max
             raise TeamWonException
 
     def add_player(self, player):
@@ -202,8 +211,13 @@ class GameState:
             raise ForbiddenActionException
         if not self.is_player_authorised(player_id):
             raise WrongPlayerException
-        self.record(action, player_id, *args)
-        return self.handle(action, player_id, *args)
+        try:
+            ret = self.handle(action, player_id, *args)
+        except:
+            raise
+        else:
+            self.record(action, player_id, *args)
+            return ret
 
     def on_entry(self):
         pass
@@ -269,6 +283,7 @@ class Speaking(GameState):
             return "Haundia"
 
     def on_entry(self):
+        self.players
         self.reset_history()
         self.players.authorise_echku_team()
 
@@ -294,10 +309,14 @@ class Trading(GameState):
                         player.cards[i] = self.packet.trade(player.cards[i])[0]
                 return "Speaking"
             return "Trading"
-        else:
-            if len(args) != 1 or not 0 <= int(args[0]) <= 3:
+        elif action == "change":
+            index = int(args[0]) - 1
+            if len(args) != 1 or not 0 <= index <= 3:
                 raise ForbiddenActionException
-            self.players[player_id].asks.add(int(args[0]))
+            if index in self.players[player_id].asks:
+                self.players[player_id].asks.remove(index)
+            else:
+                self.players[player_id].asks.add(index)
             return "Trading"
 
     def on_entry(self):
@@ -386,10 +405,10 @@ class BetState(GameState):
             return self.own_state
         elif action == "gehiago":
             proposal = int(args[0])
-            if proposal <= 0 or not self.engaged and proposal == 1:
-                raise ForbiddenActionException
             if not self.engaged:
                 proposal -= 1
+            if proposal <= 0:
+                raise ForbiddenActionException
             self.bet += self.proposal
             self.proposal = proposal
             self.engaged = True
@@ -397,7 +416,7 @@ class BetState(GameState):
             return self.own_state
         elif action == "hordago":
             self.hor_daged = True
-            bet = Game.score_max - self.players.teams[self.players[player_id].team.number].score
+            bet = Game.score_max
             return self.handle("gehiago", player_id, str(bet))
         elif action == "tira":
             self.deffered = False
@@ -459,6 +478,8 @@ class Pariak(BetState):
 
     def handle(self, action, player_id, *args):
         if action == 'ok':
+            if not self.players[player_id].waiting_confirmation:
+                raise ForbiddenActionException
             self.players[player_id].waiting_confirmation = False
 
             if all(not player.waiting_confirmation for player in self.players):
@@ -523,6 +544,8 @@ class Jokua(BetState):
 
     def handle(self, action, player_id, *args):
         if action == 'ok':
+            if not self.players[player_id].waiting_confirmation:
+                raise ForbiddenActionException
             self.players[player_id].waiting_confirmation = False
 
             if all(not player.waiting_confirmation for player in self.players):
@@ -586,6 +609,9 @@ class Finished(GameState):
                 player.waiting_confirmation = True
 
     def handle(self, action, player_id, *args):
+        if not self.players[player_id].waiting_confirmation:
+            raise ForbiddenActionException
+
         self.players[player_id].waiting_confirmation = False
 
         if all(not player.waiting_confirmation for player in self.players):

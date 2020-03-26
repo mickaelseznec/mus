@@ -26,7 +26,10 @@ class HordagoDatabase():
 
     def get(self, game_id):
         game = self.games.get(game_id)
-        return pickle.loads(game) if game is not None else None
+        try:
+            return pickle.loads(game)
+        except (pickle.PickleError, TypeError, AttributeError):
+            return None
 
     def save(self, game):
         self.games.set(game.game_id, pickle.dumps(game))
@@ -110,6 +113,9 @@ class HordagoTelegramHandler:
 
         game = self.database.get(inline_message_id)
 
+        if game is None:
+            self.bot.answerCallbackQuery(query_id, text=self.texts["cannot_do_that"])
+
         if query_data == 'show_cards':
             cards = game.players[from_id].get_cards()
             answer = "\n".join("#{}:  {} {}".format(i + 1, card.value, self.card_colors[card.color])
@@ -173,14 +179,23 @@ class HordagoTelegramHandler:
                                if state.bonus > 0 else "")
                 state_team = (self.texts["state_team"].format(state.winner.number + 1)
                               if (state.bet > 0 or state.bonus > 0) else "")
+                state_summary = state_bet + state_bonus + state_team
+                history = self.format_history(game, state, discard_ok=True)
+                if history:
+                    state_summary += "\n" + history
 
-                states_summary.append(state_bet + state_bonus + state_team)
+                states_summary.append(state_summary)
+
 
             msg += "\n".join(states_summary) + "\n\n"
 
             team_messages = []
             for i in range(2):
-                intro = self.texts["team_score"].format(i + 1, game.players.teams[i].score)
+                intro = self.texts["team_score_end_turn"].format(
+                    i + 1,
+                    game.players.teams[i].score,
+                    game.players.teams[i].score - game.players.teams[i].begin_score,
+                )
 
                 player_cards = "\n".join([self.texts["show_cards"].format(
                     player.name,
@@ -190,7 +205,7 @@ class HordagoTelegramHandler:
 
             msg += "\n".join(team_messages) + "\n\n"
 
-            msg += self.format_history(game)
+            msg += self.format_history(game, game.state)
 
             return msg
 
@@ -209,11 +224,20 @@ class HordagoTelegramHandler:
             for i in range(current_state):
                 state = game.states[game.bet_states[i]]
 
-                state_summary = (self.texts["state_summary"] if state.winner is not None
-                                    else self.texts["state_summary_empty"]).format(
-                                        self.states[game.bet_states[i]], state.bet,
-                                        ("?" if state.deffered else state.winner.number + 1))
+                state_summary = ""
+                if state.winner is None:
+                    state_summary = self.texts["state_summary_empty"].format(
+                        self.states[game.bet_states[i]])
+                else:
+                    state_summary = self.texts["state_summary"].format(
+                        self.states[game.bet_states[i]],
+                        state.bet,
+                        ("?" if state.deffered else state.winner.number + 1))
+                history = self.format_history(game, state, discard_ok=True)
+                if history:
+                    state_summary += "\n" + history
                 state_summaries.append(state_summary)
+
 
             if state_summaries:
                 msg += "\n ".join(state_summaries) + "\n\n"
@@ -239,14 +263,16 @@ class HordagoTelegramHandler:
             team_messages.append(intro + "\n".join(player_messages))
         msg += "\n".join(team_messages)
         msg += "\n\n"
-        msg += self.format_history(game)
+        msg += self.format_history(game, game.state)
 
         return msg
 
-    def format_history(self, game):
+    def format_history(self, game, game_state, discard_ok=False):
         message = ""
 
-        for player_id, action, *arguments in game.state.history:
+        for player_id, action, *arguments in game_state.history:
+            if discard_ok and action == "ok":
+                    continue
             if action == "gehiago":
                 action = self.numbers[int(arguments[0])]
             message += self.texts["player_said"].format(game.state.players[player_id].name,

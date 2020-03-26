@@ -25,6 +25,7 @@ texts:
     state_bonus: "+ {} bonus "
     state_team: "-> équipe {}."
     team_score: "Équipe {}: {} point(s).\n"
+    team_score_end_turn: "Équipe {}: {} point(s). (+{} sur cette manche)\n"
     show_cards: "{} avait: {}\n"
     title: "Manche : <b>{}</b>\n\n"
     current_bet: "Pari en cours : {}\n"
