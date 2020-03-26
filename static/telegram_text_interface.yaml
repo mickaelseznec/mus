@@ -25,7 +25,7 @@ texts:
     state_bonus: "+ {} bonus "
     state_team: "-> équipe {}."
     team_score: "Équipe {}: {} point(s).\n"
-    show_cards: "{} avait: {}\n."
+    show_cards: "{} avait: {}\n"
     title: "Manche : <b>{}</b>\n\n"
     current_bet: "Pari en cours : {}\n"
     proposal: "Proposition : {}\n"
@@ -38,6 +38,7 @@ texts:
     cannot_do_that: "Action impossible"
     not_your_turn: "Pas à ton tour !"
     no_data: "Impossible de retrouver ta partie..."
+    player_said: "{} a dit : {}\n"
 
 keyboards:
     loading: "Chargement..."

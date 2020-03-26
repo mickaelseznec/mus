@@ -184,11 +184,13 @@ class HordagoTelegramHandler:
 
                 player_cards = "\n".join([self.texts["show_cards"].format(
                     player.name,
-                    ", ".join(str(card) for card in player.get_cards()))
+                    ", ".join(str(card.value) for card in player.get_cards()))
                                           for player in game.players.get_team(i)])
                 team_messages.append(intro + player_cards)
 
-            msg += "\n".join(team_messages)
+            msg += "\n".join(team_messages) + "\n\n"
+
+            msg += self.format_history(game)
 
             return msg
 
@@ -198,9 +200,9 @@ class HordagoTelegramHandler:
 
             if game.states[game.current].proposal > 0:
                 msg += self.texts["proposal"].format(game.states[game.current].proposal)
+        msg += "\n"
 
         if game.current in game.bet_states:
-            msg += "\n"
             current_state = game.bet_states.index(game.current)
             state_summaries = []
 
@@ -213,7 +215,8 @@ class HordagoTelegramHandler:
                                         ("?" if state.deffered else state.winner.number + 1))
                 state_summaries.append(state_summary)
 
-            msg += "\n ".join(state_summaries) + "\n\n"
+            if state_summaries:
+                msg += "\n ".join(state_summaries) + "\n\n"
 
         team_messages = []
         for i in range(2):
@@ -234,10 +237,23 @@ class HordagoTelegramHandler:
                 player_messages.append(player_name + player_says)
 
             team_messages.append(intro + "\n".join(player_messages))
-
         msg += "\n".join(team_messages)
+        msg += "\n\n"
+        msg += self.format_history(game)
 
         return msg
+
+    def format_history(self, game):
+        message = ""
+
+        for player_id, action, *arguments in game.state.history:
+            if action == "gehiago":
+                action = self.numbers[int(arguments[0])]
+            message += self.texts["player_said"].format(game.state.players[player_id].name,
+                                                        action)
+
+        return message
+
 
     def compute_keyboard(self, game):
         if game.current == "waiting_room":

@@ -1,4 +1,4 @@
-import random
+from cards import *
 
 class ForbiddenActionException(Exception):
     pass
@@ -10,151 +10,6 @@ class WrongPlayerException(ForbiddenActionException):
 
 class TeamWonException(Exception):
     pass
-
-
-class Card:
-    COLORS = ["Copas", "Espadas", "Bastos", "Oros"]
-    VALUES = [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]
-
-    def __init__(self, index=None, value=None, color=None):
-        if index is not None:
-            self.value = Card.VALUES[int(index / len(Card.COLORS))]
-            self.color = Card.COLORS[index % len(Card.COLORS)]
-        else:
-            if value not in Card.VALUES or color not in Card.COLORS:
-                raise ForbiddenActionException
-            self.value = value
-            self.color = color
-
-    def index(self):
-        return Card.COLORS.index(self.color) + len(Card.COLORS) * Card.VALUES.index(self.value)
-
-    def __str__(self):
-        return str(self.value) + ' - ' + self.color
-
-    def __eq__(self, card):
-        return self.index() == card.index()
-
-    def __lt__(self, card):
-        return self.index() < card.index()
-
-
-class Hand:
-    def __init__(self, cards):
-        self.hand = cards
-
-
-class HaundiaHand(Hand):
-    def __lt__(self, other):
-        return (sorted([c.value for c in self.hand], reverse=True)
-                < sorted([c.value for c in other.hand], reverse=True))
-
-
-class TipiaHand(Hand):
-    def __lt__(self, other):
-        return sorted([c.value for c in self.hand]) > sorted([c.value for c in other.hand])
-
-
-class PariakHand(Hand):
-    def has_hand(self):
-        values = [card.value for card in self.hand]
-        counter = [values.count(value) for value in set(values)]
-        if any(count >= 2 for count in counter):
-            return True
-        return False
-
-    def group_pairs(self):
-        values = [card.value for card in self.hand]
-        return sorted(((values.count(value), value) for value in sorted(list(set(values)), reverse=True)), reverse=True)
-
-    def has_double_pair(self):
-        return all(pair[0] == 2 for pair in self.group_pairs()) or self.group_pairs()[0][0] == 4
-
-    def has_triple(self):
-        return any(pair[0] == 3 for pair in self.group_pairs())
-
-    def has_double_only(self):
-        return not self.has_double_pair() and any(pair[0] == 2 for pair in self.group_pairs())
-
-    def bonus(self):
-        if self.has_double_pair():
-            return 3
-        if self.has_triple():
-            return 2
-        if self.has_double_only():
-            return 1
-        return 0
-
-    def __lt__(self, other):
-        self_bonus, other_bonus = self.bonus(), other.bonus()
-        if self_bonus != other_bonus:
-            return self_bonus < other_bonus
-
-        own_group, other_group = self.group_pairs(), other.group_pairs()
-        return own_group < other_group
-
-
-class JokuaHand(Hand):
-    jokua_index = {(33 + i): i for i in range(8)}
-    jokua_index.update({32: 8, 31: 9})
-
-    def sum_cards(self):
-        return sum(min(card.value, 10) for card in self.hand)
-
-    def has_game(self):
-        return self.sum_cards() > 30
-
-    def bonus(self):
-        card_sum = self.sum_cards()
-        if card_sum > 31:
-            return 2
-        if card_sum == 31:
-            return 3
-        return 0
-
-    def __lt__(self, other):
-        if self.has_game():
-            if not other.has_game():
-                return False
-            return JokuaHand.jokua_index[self.sum_cards()] < JokuaHand.jokua_index[other.sum_cards()]
-
-        return self.sum_cards() < other.sum_cards()
-
-
-class Packet:
-    CARDS = [Card(i) for i in range(len(Card.COLORS) * len(Card.VALUES))]
-
-    def __init__(self):
-        self.used_cards = []
-        self.unused_cards = []
-        self.restore()
-
-    def restore(self):
-        self.unused_cards = []
-        self.used_cards = list(range(len(Packet.CARDS)))
-        self.new_packet()
-
-    def new_packet(self):
-        self.unused_cards = self.used_cards
-        random.shuffle(self.unused_cards)
-        self.used_cards = []
-
-    def take(self, n):
-        delta = len(self.unused_cards) - n
-        if delta > 0:
-            taken = self.unused_cards[0: n]
-            self.unused_cards = self.unused_cards[n:]
-            return [Card(index) for index in taken]
-        else:
-            taken = self.unused_cards
-            self.new_packet()
-            taken += self.unused_cards[0:-delta]
-            self.unused_cards = self.unused_cards[-delta:]
-            return [Card(index) for index in taken]
-
-    def trade(self, card):
-        self.used_cards.append(card.index())
-        return self.take(1)
 
 
 class Player:
@@ -184,7 +39,7 @@ class Player:
         return hash(id(self))
 
 
-class PlayerHolder:
+class PlayerManager:
     def __init__(self):
         self.teams = (Team(0), Team(1))
         self.echku = 0
@@ -321,6 +176,7 @@ class GameState:
     def __init__(self, players, packet):
         self.players = players
         self.packet = packet
+        self.history = []
         self.actions = []
 
     def actions_authorised(self):
@@ -346,13 +202,20 @@ class GameState:
             raise ForbiddenActionException
         if not self.is_player_authorised(player_id):
             raise WrongPlayerException
+        self.record(action, player_id, *args)
         return self.handle(action, player_id, *args)
 
-    def prepare(self):
+    def on_entry(self):
         pass
 
-    def clean_up(self):
+    def on_exit(self):
         pass
+
+    def record(self, action, player_id, *args):
+        self.history.append((player_id, action, *args))
+
+    def reset_history(self):
+        self.history = []
 
 
 class WaitingRoom(GameState):
@@ -384,7 +247,7 @@ class WaitingRoom(GameState):
                 raise ForbiddenActionException
             return "Speaking"
 
-    def clean_up(self):
+    def on_exit(self):
         for player in self.players:
             player.cards = sorted(self.packet.take(4))
         self.players.set_initial_echku()
@@ -405,10 +268,11 @@ class Speaking(GameState):
         elif action == "mintza":
             return "Haundia"
 
-    def prepare(self):
+    def on_entry(self):
+        self.reset_history()
         self.players.authorise_echku_team()
 
-    def clean_up(self):
+    def on_exit(self):
         for team in self.players.teams:
             team.said = ""
 
@@ -436,12 +300,13 @@ class Trading(GameState):
             self.players[player_id].asks.add(int(args[0]))
             return "Trading"
 
-    def prepare(self):
+    def on_entry(self):
+        self.reset_history()
         for player in self.players:
             player.said = ""
             player.asks = set()
 
-    def clean_up(self):
+    def on_exit(self):
         for player in self.players:
             player.cards.sort()
 
@@ -493,7 +358,8 @@ class BetState(GameState):
                 actions += "tira", "idoki"
         return actions
 
-    def prepare(self):
+    def on_entry(self):
+        self.reset_history()
         self.players.authorise_echku_player()
         self.winner = None
         self.bet = 1
@@ -548,7 +414,7 @@ class BetState(GameState):
             self.bet += self.proposal
             return "Finished"
 
-    def clean_up(self):
+    def on_exit(self):
         self.compute_winner()
         self.compute_bonus()
 
@@ -593,15 +459,21 @@ class Pariak(BetState):
 
     def handle(self, action, player_id, *args):
         if action == 'ok':
-            return self.next_state
+            self.players[player_id].waiting_confirmation = False
+
+            if all(not player.waiting_confirmation for player in self.players):
+                return self.next_state
+            else:
+                return self.own_state
+
         return super().handle(action, player_id, *args)
 
     def compute_winner(self):
         if not self.no_winner:
             super().compute_winner()
 
-    def prepare(self):
-        super().prepare()
+    def on_entry(self):
+        super().on_entry()
         self.no_bet = False
         self.no_winner = False
         self.bet = 1
@@ -612,14 +484,18 @@ class Pariak(BetState):
             self.no_bet = True
             self.deffered = False
             self.bet = 0
-            return
-        if not (any(player.has_hand for player in self.players.get_team(0)) and
-                any(player.has_hand for player in self.players.get_team(1))):
+
+        elif not (any(player.has_hand for player in self.players.get_team(0)) and
+                  any(player.has_hand for player in self.players.get_team(1))):
             self.compute_winner()
             self.no_bet = True
             self.bet = 0
             self.deffered = False
             self.engaged = True
+
+        if self.no_bet:
+            for player in self.players:
+                player.waiting_confirmation = True
 
 
 class Jokua(BetState):
@@ -647,11 +523,16 @@ class Jokua(BetState):
 
     def handle(self, action, player_id, *args):
         if action == 'ok':
-            return self.next_state
+            self.players[player_id].waiting_confirmation = False
+
+            if all(not player.waiting_confirmation for player in self.players):
+                return self.next_state
+            else:
+                return self.own_state
         return super().handle(action, player_id, *args)
 
-    def prepare(self):
-        super().prepare()
+    def on_entry(self):
+        super().on_entry()
         self.no_bet = False
         self.false_game = False
         for player in self.players:
@@ -667,6 +548,10 @@ class Jokua(BetState):
         else:
             self.false_game = True
 
+        if self.no_bet:
+            for player in self.players:
+                player.waiting_confirmation = True
+
     def compute_bonus(self):
         if self.false_game and self.engaged:
             self.bonus = 1
@@ -674,6 +559,9 @@ class Jokua(BetState):
             super().compute_bonus()
 
 class Finished(GameState):
+    own_state = "Finished"
+    next_state = "Speaking"
+
     def __init__(self, players, packet, game):
         super().__init__(players, packet)
         self.actions = ["ok"]
@@ -682,7 +570,8 @@ class Finished(GameState):
     def is_player_authorised(self, player_id):
         return True
 
-    def prepare(self):
+    def on_entry(self):
+        self.reset_history()
         if not self.players.has_finished():
             try:
                 for state in Game.bet_states:
@@ -693,10 +582,18 @@ class Finished(GameState):
             except TeamWonException:
                 self.game.finished = True
 
-    def handle(self, action, player_id, *args):
-        return "Speaking"
+            for player in self.players:
+                player.waiting_confirmation = True
 
-    def clean_up(self):
+    def handle(self, action, player_id, *args):
+        self.players[player_id].waiting_confirmation = False
+
+        if all(not player.waiting_confirmation for player in self.players):
+            return self.next_state
+        else:
+            return self.own_state
+
+    def on_exit(self):
         self.packet.restore()
         for player in self.players:
             player.cards = sorted(self.packet.take(4))
@@ -716,7 +613,7 @@ class Game:
     def __init__(self, game_id):
         self.finished = False
         self.game_id = game_id
-        self.players = PlayerHolder()
+        self.players = PlayerManager()
         self.packet = Packet()
         self.states = {
             "waiting_room": WaitingRoom(self.players, self.packet),
@@ -741,6 +638,6 @@ class Game:
         #print("Received action '" + action +"' from", player_id, "with args:", *args)
         next_state = self.states[self.current].run(action, player_id, *args)
         if next_state != self.current:
-            self.states[self.current].clean_up()
+            self.states[self.current].on_exit()
             self.current = next_state
-            self.states[self.current].prepare()
+            self.states[self.current].on_entry()

@@ -22,48 +22,48 @@ class TestInitialMus(unittest.TestCase):
         self.assertEqual(team_1, self.game.players.other_team(team_0))
 
     def test_add_player(self):
-        self.game.action("add_player", *self.christophe, "1")
+        self.game.do("add_player", *self.christophe, "1")
         self.assertTrue(self.christophe[0] in self.game.players)
 
     def test_add_multiple_player(self):
-        self.game.action("add_player", *self.christophe, "1")
-        self.game.action("add_player", *self.christophe, "1")
+        self.game.do("add_player", *self.christophe, "1")
+        self.game.do("add_player", *self.christophe, "1")
         self.assertEqual(len(self.game.players.get_team(1)), 1)
 
     def test_remove_player(self):
-        self.game.action("add_player", *self.christophe, "1")
-        self.game.action("remove_player", self.christophe[0])
+        self.game.do("add_player", *self.christophe, "1")
+        self.game.do("remove_player", self.christophe[0])
         self.assertTrue(self.christophe not in self.game.players)
 
     def test_change_team(self):
-        self.game.action("add_player", *self.christophe, "1")
-        self.game.action("add_player", *self.christophe, "0")
+        self.game.do("add_player", *self.christophe, "1")
+        self.game.do("add_player", *self.christophe, "0")
         self.assertTrue(self.game.players[self.christophe[0]].team.number == 0)
 
     def test_can_join_team(self):
         self.assertTrue(self.game.can_join_team(0))
         self.assertTrue(self.game.can_join_team(1))
-        self.game.action("add_player", *self.christophe, "0")
-        self.game.action("add_player", *self.gerard, "0")
+        self.game.do("add_player", *self.christophe, "0")
+        self.game.do("add_player", *self.gerard, "0")
         self.assertFalse(self.game.can_join_team(0))
         self.assertTrue(self.game.can_join_team(1))
 
     def test_can_start(self):
         self.assertFalse("start" in self.game.state.actions_authorised())
-        self.game.action("add_player", *self.christophe, "0")
-        self.game.action("add_player", *self.gerard, "1")
+        self.game.do("add_player", *self.christophe, "0")
+        self.game.do("add_player", *self.gerard, "1")
         self.assertTrue("start" in self.game.state.actions_authorised())
-        self.game.action("add_player", *self.thierry, "1")
+        self.game.do("add_player", *self.thierry, "1")
         self.assertFalse("start" in self.game.state.actions_authorised())
-        self.game.action("add_player", *self.michel, "0")
+        self.game.do("add_player", *self.michel, "0")
         self.assertTrue("start" in self.game.state.actions_authorised())
 
     def test_is_started(self):
-        self.assertEqual(self.game.current, "Waiting")
-        self.game.action("add_player", *self.christophe, "0")
-        self.game.action("add_player", *self.gerard, "1")
-        self.game.action("start", self.gerard[0])
-        self.assertNotEqual(self.game.current, "Waiting")
+        self.assertEqual(self.game.current, "waiting_room")
+        self.game.do("add_player", *self.christophe, "0")
+        self.game.do("add_player", *self.gerard, "1")
+        self.game.do("start", self.gerard[0])
+        self.assertNotEqual(self.game.current, "waiting_room")
 
 class TestTwoPlayerSpeakTrade(unittest.TestCase):
 
@@ -71,9 +71,9 @@ class TestTwoPlayerSpeakTrade(unittest.TestCase):
         self.game = Game(0)
         self.christophe = 1
         self.gerard = 2
-        self.game.action("add_player", 1, "Christophe", "0")
-        self.game.action("add_player", 2, "Gerard", "1")
-        self.game.action("start", self.christophe)
+        self.game.do("add_player", 1, "Christophe", "0")
+        self.game.do("add_player", 2, "Gerard", "1")
+        self.game.do("start", self.christophe)
 
     def test_card_distribution(self):
         cards = [player.get_cards() for player in self.game.players]
@@ -87,18 +87,18 @@ class TestTwoPlayerSpeakTrade(unittest.TestCase):
 
     def test_play_mus(self):
         self.assertTrue(self.christophe in self.game.state.players_authorised())
-        self.assertRaises(mus.ForbiddenActionException, self.game.action, "mus", self.gerard)
+        self.assertRaises(mus.ForbiddenActionException, self.game.do, "mus", self.gerard)
         self.assertTrue(self.christophe in self.game.state.players_authorised())
-        self.game.action("mus", self.christophe)
+        self.game.do("mus", self.christophe)
         self.assertTrue(self.gerard in self.game.state.players_authorised())
-        self.game.action("mus", self.gerard)
+        self.game.do("mus", self.gerard)
 
         old_gerard_cards = self.game.players[self.gerard].get_cards().copy()
         old_christophe_cards = self.game.players[self.christophe].get_cards().copy()
-        self.game.action("change", self.christophe, "2")
-        self.game.action("change", self.christophe, "3")
-        self.game.action("confirm", self.christophe)
-        self.game.action("confirm", self.gerard)
+        self.game.do("change", self.christophe, "2")
+        self.game.do("change", self.christophe, "3")
+        self.game.do("confirm", self.christophe)
+        self.game.do("confirm", self.gerard)
 
         new_gerard_cards = self.game.players[self.gerard].get_cards().copy()
         new_christophe_cards = self.game.players[self.christophe].get_cards().copy()
@@ -112,21 +112,21 @@ class TestTwoPlayerSpeakTrade(unittest.TestCase):
 
     def test_empty_card_packet(self):
         for _ in range(50):
-            self.game.action("mus", self.christophe)
-            self.game.action("mus", self.gerard)
-            self.game.action("change", self.christophe, "0")
-            self.game.action("change", self.christophe, "1")
-            self.game.action("change", self.christophe, "2")
-            self.game.action("change", self.christophe, "3")
-            self.game.action("change", self.gerard, "0")
-            self.game.action("change", self.gerard, "1")
-            self.game.action("change", self.gerard, "2")
+            self.game.do("mus", self.christophe)
+            self.game.do("mus", self.gerard)
+            self.game.do("change", self.christophe, "0")
+            self.game.do("change", self.christophe, "1")
+            self.game.do("change", self.christophe, "2")
+            self.game.do("change", self.christophe, "3")
+            self.game.do("change", self.gerard, "0")
+            self.game.do("change", self.gerard, "1")
+            self.game.do("change", self.gerard, "2")
 
             old_gerard_cards = self.game.players[self.gerard].get_cards().copy()
             old_christophe_cards = self.game.players[self.christophe].get_cards().copy()
             overflow = len(self.game.packet.unused_cards) < 7
-            self.game.action("confirm", self.christophe)
-            self.game.action("confirm", self.gerard)
+            self.game.do("confirm", self.christophe)
+            self.game.do("confirm", self.gerard)
             new_gerard_cards = self.game.players[self.gerard].get_cards().copy()
             new_christophe_cards = self.game.players[self.christophe].get_cards().copy()
 
@@ -146,50 +146,50 @@ class TestTwoPlayerHandiak(unittest.TestCase):
         self.game = Game(0)
         self.christophe = 1
         self.gerard = 2
-        self.game.action("add_player", 1, "Christophe", "0")
-        self.game.action("add_player", 2, "Gerard", "1")
-        self.game.action("start", self.christophe)
-        self.game.action("mintza", self.christophe)
+        self.game.do("add_player", 1, "Christophe", "0")
+        self.game.do("add_player", 2, "Gerard", "1")
+        self.game.do("start", self.christophe)
+        self.game.do("mintza", self.christophe)
 
     def test_init_handiak(self):
         self.assertEqual(self.game.current, self.own_name)
         self.assertEqual(self.game.players.echku, self.game.players[self.christophe])
 
     def test_paso_paso(self):
-        self.game.action("paso", self.christophe)
-        self.game.action("paso", self.gerard)
+        self.game.do("paso", self.christophe)
+        self.game.do("paso", self.gerard)
         self.assertEqual(self.game.current, self.next_name)
 
     def test_paso_imido_idoki(self):
-        self.game.action("paso", self.christophe)
-        self.game.action("imido", self.gerard)
-        self.game.action("idoki", self.christophe)
+        self.game.do("paso", self.christophe)
+        self.game.do("imido", self.gerard)
+        self.game.do("idoki", self.christophe)
         self.assertTrue(self.game.states[self.own_name].deffered)
         self.assertEqual(self.game.states[self.own_name].bet, 2)
         self.assertEqual(self.game.current, self.next_name)
 
     def test_imido_bi_hiru_idoki(self):
-        self.game.action("imido", self.christophe)
-        self.game.action("gehiago", self.gerard, "2")
-        self.game.action("gehiago", self.christophe, "3")
-        self.game.action("idoki", self.gerard)
+        self.game.do("imido", self.christophe)
+        self.game.do("gehiago", self.gerard, "2")
+        self.game.do("gehiago", self.christophe, "3")
+        self.game.do("idoki", self.gerard)
         self.assertTrue(self.game.states[self.own_name].deffered)
         self.assertEqual(self.game.states[self.own_name].bet, 7)
         self.assertEqual(self.game.current, self.next_name)
 
     def test_paso_imido_tira(self):
-        self.game.action("paso", self.christophe)
-        self.game.action("imido", self.gerard)
-        self.game.action("tira", self.christophe)
+        self.game.do("paso", self.christophe)
+        self.game.do("imido", self.gerard)
+        self.game.do("tira", self.christophe)
         self.assertFalse(self.game.states[self.own_name].deffered)
         self.assertEqual(self.game.states[self.own_name].bet, 1)
         self.assertEqual(self.game.players[self.gerard].team.score, 1)
         self.assertEqual(self.game.current, self.next_name)
 
     def test_imdido_lau_tira(self):
-        self.game.action("imido", self.christophe)
-        self.game.action("gehiago", self.gerard, "4")
-        self.game.action("tira", self.christophe)
+        self.game.do("imido", self.christophe)
+        self.game.do("gehiago", self.gerard, "4")
+        self.game.do("tira", self.christophe)
         self.assertEqual(self.game.states[self.own_name].bet, 2)
         self.assertEqual(self.game.players[self.gerard].team.score, 2)
         self.assertEqual(self.game.current, self.next_name)
@@ -200,8 +200,8 @@ class TestTwoPlayerTipia(TestTwoPlayerHandiak):
     next_name = "Pariak"
     def setUp(self):
         super().setUp()
-        self.game.action("paso", self.christophe)
-        self.game.action("paso", self.gerard)
+        self.game.do("paso", self.christophe)
+        self.game.do("paso", self.gerard)
 
 
 class TestTwoPlayerPariak(unittest.TestCase):
@@ -217,36 +217,36 @@ class TestTwoPlayerPariak(unittest.TestCase):
                                       Card(value=11, color='Copas')])
         self.christophe = 1
         self.gerard = 2
-        self.game.action("add_player", 1, "Christophe", "0")
-        self.game.action("add_player", 2, "Gerard", "1")
-        self.game.action("start", self.christophe)
-        self.game.action("mintza", self.christophe)
-        self.game.action("paso", self.christophe)
-        self.game.action("paso", self.gerard)
-        self.game.action("paso", self.christophe)
+        self.game.do("add_player", 1, "Christophe", "0")
+        self.game.do("add_player", 2, "Gerard", "1")
+        self.game.do("start", self.christophe)
+        self.game.do("mintza", self.christophe)
+        self.game.do("paso", self.christophe)
+        self.game.do("paso", self.gerard)
+        self.game.do("paso", self.christophe)
 
     def test_bai_ez(self):
         self.game.players[self.christophe].cards = self.paired_cards
         self.game.players[self.gerard].cards = self.unpaired_cards
-        self.game.action("paso", self.gerard)
+        self.game.do("paso", self.gerard)
         self.assertEqual("Pariak", self.game.current)
         self.assertTrue("ok" in self.game.states[self.game.current].actions_authorised())
 
     def test_ez_ez(self):
         self.game.players[self.christophe].cards = self.unpaired_cards
         self.game.players[self.gerard].cards = self.unpaired_cards
-        self.game.action("paso", self.gerard)
+        self.game.do("paso", self.gerard)
         self.assertEqual("Pariak", self.game.current)
         self.assertTrue("ok" in self.game.states[self.game.current].actions_authorised())
 
     def test_bai_bai(self):
         self.game.players[self.christophe].cards = self.paired_cards
         self.game.players[self.gerard].cards = self.paired_cards
-        self.game.action("paso", self.gerard)
+        self.game.do("paso", self.gerard)
         self.assertEqual("Pariak", self.game.current)
         self.assertTrue("ok" not in self.game.states[self.game.current].actions_authorised())
-        self.game.action("paso", self.christophe)
-        self.game.action("paso", self.gerard)
+        self.game.do("paso", self.christophe)
+        self.game.do("paso", self.gerard)
 
 
 class TestTwoPlayerJokua(unittest.TestCase):
@@ -262,28 +262,28 @@ class TestTwoPlayerJokua(unittest.TestCase):
                                     Card(value=11, color='Copas')])
         self.christophe = 1
         self.gerard = 2
-        self.game.action("add_player", 1, "Christophe", "0")
-        self.game.action("add_player", 2, "Gerard", "1")
-        self.game.action("start", self.christophe)
-        self.game.action("mintza", self.christophe)
-        self.game.action("paso", self.christophe)
-        self.game.action("paso", self.gerard)
+        self.game.do("add_player", 1, "Christophe", "0")
+        self.game.do("add_player", 2, "Gerard", "1")
+        self.game.do("start", self.christophe)
+        self.game.do("mintza", self.christophe)
+        self.game.do("paso", self.christophe)
+        self.game.do("paso", self.gerard)
         # Tipia
-        self.game.action("paso", self.christophe)
+        self.game.do("paso", self.christophe)
 
     def test_bai_ez(self):
         self.game.players[self.christophe].cards = self.game_cards
         self.game.players[self.gerard].cards = self.nogame_cards
-        self.game.action("paso", self.gerard)
-        self.game.action("ok", self.gerard)
+        self.game.do("paso", self.gerard)
+        self.game.do("ok", self.gerard)
         self.assertEqual("Jokua", self.game.current)
         self.assertTrue("ok" in self.game.states[self.game.current].actions_authorised())
 
     def test_ez_ez(self):
         self.game.players[self.christophe].cards = self.nogame_cards
         self.game.players[self.gerard].cards = self.nogame_cards
-        self.game.action("paso", self.gerard)
-        self.game.action("ok", self.gerard)
+        self.game.do("paso", self.gerard)
+        self.game.do("ok", self.gerard)
         self.assertEqual("Jokua", self.game.current)
         self.assertTrue("ok" not in self.game.states[self.game.current].actions_authorised())
         self.assertTrue(self.game.states[self.game.current].false_game)
@@ -291,8 +291,8 @@ class TestTwoPlayerJokua(unittest.TestCase):
     def test_bai_bai(self):
         self.game.players[self.christophe].cards = self.game_cards
         self.game.players[self.gerard].cards = self.game_cards
-        self.game.action("paso", self.gerard)
-        self.game.action("ok", self.gerard)
+        self.game.do("paso", self.gerard)
+        self.game.do("ok", self.gerard)
         self.assertEqual("Jokua", self.game.current)
         self.assertTrue("ok" not in self.game.states[self.game.current].actions_authorised())
         self.assertFalse(self.game.states[self.game.current].false_game)
@@ -304,9 +304,9 @@ class TestCardComparisons(unittest.TestCase):
         self.game = Game(0)
         self.christophe = 1
         self.gerard = 2
-        self.game.action("add_player", 1, "Christophe", "0")
-        self.game.action("add_player", 2, "Gerard", "1")
-        self.game.action("start", "Gerard")
+        self.game.do("add_player", 1, "Christophe", "0")
+        self.game.do("add_player", 2, "Gerard", "1")
+        self.game.do("start", "Gerard")
         self.state = self.game.states[self.game_state]
         self.compute_winner = self.state.compute_winner
 
