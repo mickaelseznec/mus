@@ -106,21 +106,21 @@ class TestTwoPlayerSpeakTrade(unittest.TestCase):
         self.assertEqual(old_gerard_cards, new_gerard_cards)
 
         self.assertTrue(old_christophe_cards[0] in new_christophe_cards)
-        self.assertTrue(old_christophe_cards[1] in new_christophe_cards)
-        self.assertFalse(old_christophe_cards[2] in new_christophe_cards)
-        self.assertFalse(old_christophe_cards[3] in new_christophe_cards)
+        self.assertTrue(old_christophe_cards[1] not in new_christophe_cards)
+        self.assertTrue(old_christophe_cards[2] not in new_christophe_cards)
+        self.assertTrue(old_christophe_cards[3] in new_christophe_cards)
 
     def test_empty_card_packet(self):
         for _ in range(50):
             self.game.do("mus", self.christophe)
             self.game.do("mus", self.gerard)
-            self.game.do("change", self.christophe, "0")
             self.game.do("change", self.christophe, "1")
             self.game.do("change", self.christophe, "2")
             self.game.do("change", self.christophe, "3")
-            self.game.do("change", self.gerard, "0")
+            self.game.do("change", self.christophe, "4")
             self.game.do("change", self.gerard, "1")
             self.game.do("change", self.gerard, "2")
+            self.game.do("change", self.gerard, "3")
 
             old_gerard_cards = self.game.players[self.gerard].get_cards().copy()
             old_christophe_cards = self.game.players[self.christophe].get_cards().copy()
@@ -276,6 +276,7 @@ class TestTwoPlayerJokua(unittest.TestCase):
         self.game.players[self.gerard].cards = self.nogame_cards
         self.game.do("paso", self.gerard)
         self.game.do("ok", self.gerard)
+        self.game.do("ok", self.christophe)
         self.assertEqual("Jokua", self.game.current)
         self.assertTrue("ok" in self.game.states[self.game.current].actions_authorised())
 
@@ -284,6 +285,7 @@ class TestTwoPlayerJokua(unittest.TestCase):
         self.game.players[self.gerard].cards = self.nogame_cards
         self.game.do("paso", self.gerard)
         self.game.do("ok", self.gerard)
+        self.game.do("ok", self.christophe)
         self.assertEqual("Jokua", self.game.current)
         self.assertTrue("ok" not in self.game.states[self.game.current].actions_authorised())
         self.assertTrue(self.game.states[self.game.current].false_game)
@@ -293,6 +295,8 @@ class TestTwoPlayerJokua(unittest.TestCase):
         self.game.players[self.gerard].cards = self.game_cards
         self.game.do("paso", self.gerard)
         self.game.do("ok", self.gerard)
+        self.assertEqual("Pariak", self.game.current)
+        self.game.do("ok", self.christophe)
         self.assertEqual("Jokua", self.game.current)
         self.assertTrue("ok" not in self.game.states[self.game.current].actions_authorised())
         self.assertFalse(self.game.states[self.game.current].false_game)
