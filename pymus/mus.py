@@ -283,7 +283,7 @@ class Speaking(GameState):
             return "Haundia"
 
     def on_entry(self):
-        self.players
+        self.players.record_scores()
         self.reset_history()
         self.players.authorise_echku_team()
 
