@@ -197,7 +197,7 @@ class HordagoTelegramHandler:
                     game.players.teams[i].score - game.players.teams[i].begin_score,
                 )
 
-                player_cards = "\n".join([self.texts["show_cards"].format(
+                player_cards = "".join([self.texts["show_cards"].format(
                     player.name,
                     ", ".join(str(card.value) for card in player.get_cards()))
                                           for player in game.players.get_team(i)])

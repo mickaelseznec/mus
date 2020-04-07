@@ -513,6 +513,9 @@ class Pariak(BetState):
             self.bet = 0
             self.deffered = False
             self.engaged = True
+        else:
+            while not self.players.authorised_player.has_hand:
+                self.players.authorise_next_player()
 
         if self.no_bet:
             for player in self.players:
@@ -568,6 +571,9 @@ class Jokua(BetState):
                 self.bet = 0
                 self.engaged = True
                 self.deffered = False
+            else:
+                while not self.players.authorised_player.has_game:
+                    self.players.authorise_next_player()
         else:
             self.false_game = True
 
@@ -627,9 +633,7 @@ class Finished(GameState):
         if self.players.has_finished():
             for team in self.players.teams:
                 team.score = 0
-            self.players.set_echku(0)
-        else:
-            self.players.set_echku()
+        self.players.set_echku()
 
 
 class Game:

@@ -15,7 +15,7 @@ texts:
               {}\n\
               Équipe 2:\n\
               {}\n\
-              <b>Choisi quelles cartes tu veux échanger.</b>\n"
+              <b>Choisis quelles cartes tu veux échanger.</b>\n"
 
     exchange: "{} va échanger {} carte(s)."
     finished: "<b>Fin du tour.</b>\n\n"
