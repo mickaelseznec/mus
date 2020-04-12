@@ -120,7 +120,7 @@ class PlayerManager:
     def set_echku(self):
         players = self.get_all_echku_sorted()
         for player in players:
-            player.index = (player.index + 1) % len(players)
+            player.index = (player.index - 1) % len(players)
         self.echku = self.get_all_echku_sorted()[0]
 
     def __iter__(self):
