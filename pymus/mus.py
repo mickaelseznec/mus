@@ -381,6 +381,7 @@ class BetState(GameState):
 
     def on_entry(self):
         self.reset_history()
+        self.first_player = self.players.echku
         self.players.authorise_echku_player()
         self.winner = None
         self.bet = 1
@@ -390,13 +391,13 @@ class BetState(GameState):
         self.proposal = 0
         self.bonus = 0
 
-    def everybody_is_mus(self):
-        return self.players.authorised_player == self.players.echku
+    def everybody_is_paso(self):
+        return self.players.authorised_player == self.first_player
 
     def handle(self, action, player_id, *args):
         if action == "paso":
             self.authorise_next_player()
-            if self.everybody_is_mus():
+            if self.everybody_is_paso():
                 self.deffered = True
                 return self.next_state
             return self.own_state
@@ -518,6 +519,7 @@ class Pariak(BetState):
         else:
             while not self.players.authorised_player.has_hand:
                 self.players.authorise_next_player()
+            self.first_player = self.players.authorised_player
 
         if self.no_bet:
             for player in self.players:
@@ -576,6 +578,7 @@ class Jokua(BetState):
             else:
                 while not self.players.authorised_player.has_game:
                     self.players.authorise_next_player()
+                self.first_player = self.players.authorised_player
         else:
             self.false_game = True
 

@@ -206,6 +206,47 @@ class TestTwoPlayerTipia(TestTwoPlayerHandiak):
         self.game.do("paso", self.gerard)
 
 
+class TestFourPlayerPariak(unittest.TestCase):
+    def setUp(self):
+        self.game = Game(0)
+        self.paired_cards = sorted([Card(value=1, color='Oros'),
+                                    Card(value=5, color='Oros'),
+                                    Card(value=5, color='Bastos'),
+                                    Card(value=12, color='Copas')])
+        self.unpaired_cards = sorted([Card(value=2, color='Oros'),
+                                      Card(value=6, color='Oros'),
+                                      Card(value=7, color='Bastos'),
+                                      Card(value=11, color='Copas')])
+        self.christophe = 1
+        self.gerard = 2
+        self.michel = 3
+        self.robert = 4
+        self.game.do("add_player", 1, "Christophe", "0")
+        self.game.do("add_player", 2, "Gerard", "0")
+        self.game.do("add_player", 3, "Michel", "1")
+        self.game.do("add_player", 4, "Robert", "1")
+        self.game.do("start", self.christophe)
+
+        self.game.players[self.christophe].cards = self.unpaired_cards
+        self.game.players[self.michel].cards = self.paired_cards
+        self.game.players[self.gerard].cards = self.paired_cards
+        self.game.players[self.robert].cards = self.unpaired_cards
+
+        self.game.do("mintza", self.christophe)
+
+        self.game.do("imido", self.christophe)
+        self.game.do("tira", self.michel)
+
+        self.game.do("imido", self.christophe)
+        self.game.do("tira", self.michel)
+
+    def test_everyone_is_pacho(self):
+
+        self.assertEqual("Pariak", self.game.current)
+        self.game.do("paso", self.michel)
+        self.game.do("paso", self.gerard)
+        self.assertEqual("Jokua", self.game.current)
+
 class TestTwoPlayerPariak(unittest.TestCase):
     def setUp(self):
         self.game = Game(0)
