@@ -302,6 +302,8 @@ class Trading(GameState):
 
     def handle(self, action, player_id, *args):
         if action == "confirm":
+            if len(self.players[player_id].asks) == 0:
+                raise ForbiddenActionException
             self.players[player_id].said = "confirm"
             if all(player.said == "confirm" for player in self.players):
                 for player in self.players:

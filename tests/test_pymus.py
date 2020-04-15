@@ -98,12 +98,14 @@ class TestTwoPlayerSpeakTrade(unittest.TestCase):
         self.game.do("change", self.christophe, "2")
         self.game.do("change", self.christophe, "3")
         self.game.do("confirm", self.christophe)
+
+        self.assertRaises(mus.ForbiddenActionException,
+                          self.game.do, "confirm", self.gerard)
+        self.game.do("change", self.gerard, "1")
         self.game.do("confirm", self.gerard)
 
         new_gerard_cards = self.game.players[self.gerard].get_cards().copy()
         new_christophe_cards = self.game.players[self.christophe].get_cards().copy()
-
-        self.assertEqual(old_gerard_cards, new_gerard_cards)
 
         self.assertTrue(old_christophe_cards[0] in new_christophe_cards)
         self.assertTrue(old_christophe_cards[1] not in new_christophe_cards)
