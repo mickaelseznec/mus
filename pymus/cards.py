@@ -1,30 +1,14 @@
 import random
+import itertools as it
 
+from collections import deque, Counter
+from dataclasses import dataclass
+from typing import Sequence
+
+@dataclass(order=True, unsafe_hash=True)
 class Card:
-    COLORS = ["Copas", "Espadas", "Bastos", "Oros"]
-    VALUES = [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]
-
-    def __init__(self, index=None, value=None, color=None):
-        if index is not None:
-            self.value = Card.VALUES[int(index / len(Card.COLORS))]
-            self.color = Card.COLORS[index % len(Card.COLORS)]
-        else:
-            if value not in Card.VALUES or color not in Card.COLORS:
-                raise ForbiddenActionException
-            self.value = value
-            self.color = color
-
-    def index(self):
-        return Card.COLORS.index(self.color) + len(Card.COLORS) * Card.VALUES.index(self.value)
-
-    def __str__(self):
-        return str(self.value) + ' - ' + self.color
-
-    def __eq__(self, card):
-        return self.index() == card.index()
-
-    def __lt__(self, card):
-        return self.index() < card.index()
+    value: int
+    color: str
 
 
 class Hand:
@@ -33,114 +17,102 @@ class Hand:
 
 
 class HaundiaHand(Hand):
+    def sorted_hand(self):
+        return sorted(self.hand, key=lambda card: card.value, reverse=True)
+
     def __lt__(self, other):
-        return (sorted([c.value for c in self.hand], reverse=True)
-                < sorted([c.value for c in other.hand], reverse=True))
+        return self.sorted_hand() < other.sorted_hand()
 
 
 class TipiaHand(Hand):
+    def sorted_hand(self):
+        return sorted(self.hand, key=lambda card: card.value)
+
     def __lt__(self, other):
-        return sorted([c.value for c in self.hand]) > sorted([c.value for c in other.hand])
+        return self.sorted_hand() > other.sorted_hand()
 
 
 class PariakHand(Hand):
-    def has_hand(self):
-        values = [card.value for card in self.hand]
-        counter = [values.count(value) for value in set(values)]
-        return any(count >= 2 for count in counter)
+    def get_counts(self):
+        return Counter(card.value for card in self.hand)
 
-    def group_pairs(self):
-        values = [card.value for card in self.hand]
-        return sorted(((values.count(value), value) for value in sorted(list(set(values)), reverse=True)), reverse=True)
+    def is_special(self):
+        counts = self.get_counts()
+        return any(count >= 2 for count in counts.values())
 
-    def has_double_pair(self):
-        return all(pair[0] == 2 for pair in self.group_pairs()) or self.group_pairs()[0][0] == 4
-
-    def has_triple(self):
-        return any(pair[0] == 3 for pair in self.group_pairs())
-
-    def has_double_only(self):
-        return not self.has_double_pair() and any(pair[0] == 2 for pair in self.group_pairs())
+    def pairs_in_order(self):
+        value_counts = [(value, count) for (value, count) in self.get_counts().items() if count >= 2]
+        # Split four-of-a-kind into two pairs
+        for value, count in value_counts:
+            if count == 4:
+                value_counts = [(key, 2), (key, 2)]
+        return sorted((value for (value, _) in value_counts), reverse=True)
 
     def bonus(self):
-        if self.has_double_pair():
-            return 3
-        if self.has_triple():
-            return 2
-        if self.has_double_only():
-            return 1
-        return 0
+        counts = self.get_counts()
+        bonus = 0
+        if (all(count == 4 for count in counts.values()) or
+                all(count == 2 for count in counts.values())):
+            bonus = 3
+        elif any(count == 3 for count in counts.values()):
+            bonus = 2
+        elif any(count == 2 for count in counts.values()):
+            bonus = 1
+        return bonus
 
     def __lt__(self, other):
         self_bonus, other_bonus = self.bonus(), other.bonus()
         if self_bonus != other_bonus:
             return self_bonus < other_bonus
 
-        own_group, other_group = self.group_pairs(), other.group_pairs()
-        return own_group < other_group
+        return self.pairs_in_order() < other.pairs_in_order()
 
 
 class JokuaHand(Hand):
-    jokua_index = {(33 + i): i for i in range(8)}
-    jokua_index.update({32: 8, 31: 9})
+    jokua_index = [31, 32, 40, 37, 36, 35, 34, 33]
 
     def sum_cards(self):
         return sum(min(card.value, 10) for card in self.hand)
 
-    def has_game(self):
-        return self.sum_cards() > 30
+    def is_special(self):
+        return self.sum_cards() >= 31
 
     def bonus(self):
+        bonus = 1
         card_sum = self.sum_cards()
-        if card_sum > 31:
-            return 2
+
         if card_sum == 31:
-            return 3
-        return 0
+            bonus = 3
+        elif card_sum > 31:
+            bonus = 2
+        return bonus
 
     def __lt__(self, other):
-        if self.has_game():
-            if not other.has_game():
+        if self.is_special():
+            if not other.is_special():
                 return False
-            return JokuaHand.jokua_index[self.sum_cards()] < JokuaHand.jokua_index[other.sum_cards()]
+            return self.jokua_index.index(self.sum_cards()) > self.jokua_index.index(other.sum_cards())
 
         return self.sum_cards() < other.sum_cards()
 
 
 class Packet:
-    CARDS = [Card(i) for i in range(len(Card.COLORS) * len(Card.VALUES))]
+    basque_colors = ("Copas", "Espadas", "Bastos", "Oros")
+    basque_values = (1, 2, 3, 4, 5, 6, 7, 10, 11, 12)
 
     def __init__(self):
-        self.used_cards = []
-        self.unused_cards = []
-        self.restore()
+        self.discarded = deque()
+        self.drawable = deque(Card(*attr) for
+                              attr in it.product(self.basque_values, self.basque_colors))
 
-    def restore(self):
-        self.unused_cards = []
-        self.used_cards = list(range(len(Packet.CARDS)))
-        self.new_packet()
+    def draw(self) -> Card:
+        if len(self.drawable) == 0:
+            self.refill_drawable()
+        return self.drawable.pop()
 
-    def new_packet(self):
-        self.unused_cards = self.used_cards
-        random.shuffle(self.unused_cards)
-        self.used_cards = []
+    def refill_drawable(self) -> None:
+        self.drawable = deque(self.discarded)
+        self.discarded = deque()
 
-    def take(self, n):
-        delta = len(self.unused_cards) - n
-        if delta > 0:
-            taken = self.unused_cards[0: n]
-            self.unused_cards = self.unused_cards[n:]
-            return [Card(index) for index in taken]
-        else:
-            taken = self.unused_cards
-            self.new_packet()
-            taken += self.unused_cards[0:-delta]
-            self.unused_cards = self.unused_cards[-delta:]
-            return [Card(index) for index in taken]
-
-    def trade(self, card):
-        self.used_cards.append(card.index())
-        return self.take(1)
-
-
-
+    def discard(self, card: Card) -> None:
+        self.discarded.append(card)

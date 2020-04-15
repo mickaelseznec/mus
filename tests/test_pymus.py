@@ -1,9 +1,10 @@
 import sys
 sys.path.append("pymus")
 
+import itertools as it
 import unittest
-import mus
 
+import mus
 from mus import Game, Card, Team
 
 class TestInitialMus(unittest.TestCase):
@@ -76,11 +77,11 @@ class TestTwoPlayerSpeakTrade(unittest.TestCase):
         self.game.do("start", self.christophe)
 
     def test_card_distribution(self):
-        cards = [player.get_cards() for player in self.game.players]
-        card_indexes = [card.index() for card_set in cards for card in card_set]
+        cards = list(it.chain(*(player.get_cards() for player in self.game.players)))
+
         # Check if not card is here twice
-        self.assertEqual(len(card_indexes), len(set(card_indexes)))
-        self.assertEqual(len(self.game.packet.unused_cards), 32)
+        self.assertEqual(len(cards), len(set(cards)))
+        self.assertEqual(len(self.game.packet.drawable), 32)
 
     def test_first_turn(self):
         self.assertEqual(self.game.current, "Speaking")
@@ -126,7 +127,7 @@ class TestTwoPlayerSpeakTrade(unittest.TestCase):
 
             old_gerard_cards = self.game.players[self.gerard].get_cards().copy()
             old_christophe_cards = self.game.players[self.christophe].get_cards().copy()
-            overflow = len(self.game.packet.unused_cards) < 7
+            overflow = len(self.game.packet.drawable) < 7
             self.game.do("confirm", self.christophe)
             self.game.do("confirm", self.gerard)
             new_gerard_cards = self.game.players[self.gerard].get_cards().copy()

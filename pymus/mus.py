@@ -263,7 +263,7 @@ class WaitingRoom(GameState):
 
     def on_exit(self):
         for player in self.players:
-            player.cards = sorted(self.packet.take(4))
+            player.cards = sorted(self.packet.draw() for _ in range(4))
         self.players.set_initial_echku()
 
 
@@ -308,7 +308,8 @@ class Trading(GameState):
             if all(player.said == "confirm" for player in self.players):
                 for player in self.players:
                     for i in list(player.asks):
-                        player.cards[i] = self.packet.trade(player.cards[i])[0]
+                        self.packet.discard(player.cards[i])
+                        player.cards[i] = self.packet.draw()
                 return "Speaking"
             return "Trading"
         elif action == "change":
@@ -502,7 +503,7 @@ class Pariak(BetState):
         self.no_winner = False
         self.bet = 1
         for player in self.players:
-            player.has_hand = PariakHand(player.cards).has_hand()
+            player.has_hand = PariakHand(player.cards).is_special()
         if all(not player.has_hand for player in self.players):
             self.no_winner = True
             self.no_bet = True
@@ -566,7 +567,7 @@ class Jokua(BetState):
         self.no_bet = False
         self.false_game = False
         for player in self.players:
-            player.has_game = JokuaHand(player.cards).has_game()
+            player.has_game = JokuaHand(player.cards).is_special()
         if any(player.has_game for player in self.players):
             if not (any(player.has_game for player in self.players.get_team(0)) and
                     any(player.has_game for player in self.players.get_team(1))):
@@ -633,7 +634,7 @@ class Finished(GameState):
     def on_exit(self):
         self.packet.restore()
         for player in self.players:
-            player.cards = sorted(self.packet.take(4))
+            player.cards = sorted(self.packet.draw() for _ in range(4))
         self.players.get_all_echku_sorted()
         if self.players.has_finished():
             for team in self.players.teams:
