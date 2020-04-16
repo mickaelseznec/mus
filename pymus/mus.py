@@ -1,5 +1,6 @@
 from abc import ABC
 from collections import UserList
+from itertools import chain
 
 from cards import Card, Packet, Hand, HaundiaHand, TipiaHand, PariakHand, JokuaHand
 
@@ -16,39 +17,121 @@ class TeamWonException(Exception):
 
 
 class Player:
-    def __init__(self, player_id, player_name):
-        self.id = player_id
-        self.name = player_name
+    def __init__(self, player_id):
+        self.player_id = player_id
+        self.team_reference = None
 
-        self.team = None
+        self.can_speak = False
         self.index = None
-        self.is_authorised = False
         self.said = ""
         self.cards = []
         self.asks = set()
         self.has_game = False
         self.has_hand = False
 
+    @property
+    def team_id(self):
+        if self.team_reference:
+            return self.team_reference.team_id
+        return None
+
     def get_cards(self):
         return self.cards
 
-    def __str__(self):
-        return self.name
 
-    def __eq__(self, other):
-        return self.id == other.id
+class Team(UserList):
+    def __init__(self, team_id):
+        self.team_id = team_id
+        self.data = []
 
-    def __hash__(self):
-        return hash(id(self))
+        self.begin_score = 0
+        self.score = 0
+        self.said = ""
+        self.can_speak = False
+
+    def record_score(self):
+        self.begin_score = self.score
+
+    def add_score(self, score):
+        self.score += score
+        if self.score >= Game.score_max:
+            self.score = Game.score_max
+            raise TeamWonException
+
+    def authorise(self, yes_or_no):
+        for player in self.data:
+            player.can_speak = yes_or_no
+
+    def toggle_authorisation(self):
+        for player in self.data:
+            player.can_speak = not player.can_speak
 
 
 class PlayerManager:
     def __init__(self):
         self.teams = (Team(0), Team(1))
+
         self.echku = 0
         self.authorised_team = None
         self.authorised_player = None
         self.id_counter = 0
+
+    @property
+    def all_players(self):
+        return tuple(chain(*self.teams))
+
+    def get_player_by_id(self, player_id):
+        for player in self.all_players:
+            if player_id == player.player_id:
+                return player
+        else:
+            return None
+
+    def create_new_player(self):
+        player_id = self.id_counter
+        self.id_counter += 1
+
+        return Player(player_id)
+
+    def detach_player(self, player):
+        player_team = player.team_reference
+
+        player.team_reference = None
+        player_team.remove(player)
+
+    def attach_player(self, player, team_id):
+        self.teams[team_id].append(player)
+        player.team_reference = self.teams[team_id]
+
+    @property
+    def can_start(self):
+        return (len(self.teams[0]) == len(self.teams[1]) and
+                (len(self.teams[0]) == 1 or len(self.teams[0]) == 2))
+
+    def add_player(self, player_id, team_id):
+        player = self.get_player_by_id(player_id)
+
+        if player and player.team_id == team_id:
+            return player_id
+
+        if len(self.teams[team_id]) >= 2:
+            raise ForbiddenActionException("Team %d already full" % team_id)
+
+        if player is None:
+            player = self.create_new_player()
+        else:
+            self.detach_player(player)
+        self.attach_player(player, team_id)
+
+        return player.player_id
+
+    def remove_player(self, player_id):
+        player = self.get_player_by_id(player_id)
+        if not player:
+            return
+
+        self.detach_player(player)
+
 
     def has_finished(self):
         return any(team.score >= Game.score_max for team in self.teams)
@@ -57,31 +140,6 @@ class PlayerManager:
         for i, team in enumerate(self.teams):
             if team.score >= Game.score_max:
                 return i
-
-    def generate_new_id(self):
-        result = self.id_counter
-        self.id_counter += 1
-        return result
-
-    def add(self, player_id, team_id):
-        if self.get_team_id(player_id) == team_id:
-            return player_id
-
-        if len(self.teams[team_id]) >= 2:
-            raise ForbiddenActionException("Team %d already full" % team_id)
-
-        if player_id is None:
-            player_id = self.generate_new_id()
-        else:
-            self.detach_player(player_id)
-        self.teams[team_id].append(player_id)
-
-        return player_id
-
-    def remove(self, player_id):
-        if player_id in self:
-            player = self[player_id]
-            player.team.remove_player(player)
 
     def get_all(self):
         return [player for team in self.teams for player in team.players]
@@ -97,10 +155,6 @@ class PlayerManager:
             result = 1
         return result
 
-    def detach_player(self, player_id):
-        team_id = self.get_team_id(player_id)
-        self.teams[team_id].remove(player_id)
-
     def get_team(self, team_id):
         return self.teams[team_id]
 
@@ -108,16 +162,16 @@ class PlayerManager:
         players = self.get_all_echku_sorted()
         self.authorised_player = players[0]
         for player in players:
-            player.is_authorised = player == self.authorised_player
+            player.can_speak = player == self.authorised_player
 
     def authorise_next_player(self):
         players = self.get_all_echku_sorted()
         self.authorised_player = players[(self.authorised_player.index + 1) % len(players)]
         for player in players:
-            player.is_authorised = player == self.authorised_player
+            player.can_speak = player == self.authorised_player
 
     def other_team(self, team):
-        if team.number == 0:
+        if team.team_id == 0:
             return self.teams[1]
         return self.teams[0]
 
@@ -135,9 +189,6 @@ class PlayerManager:
         for team in self.teams:
             team.record_score()
 
-    def can_start(self):
-        team_0_size = len(self.get_team(0))
-        return team_0_size == len(self.get_team(1)) and (team_0_size == 1 or team_0_size == 2)
 
     def set_initial_echku(self):
         index = 0
@@ -165,56 +216,15 @@ class PlayerManager:
                 return other
         raise IndexError
 
-class Team(UserList):
-    def __init__(self, number):
-        self.data = []
-        self.number = number
-        self.begin_score = 0
-        self.score = 0
-        self.said = ""
-        self.is_authorised = False
-
-    def record_score(self):
-        self.begin_score = self.score
-
-    def add_score(self, score):
-        self.score += score
-        if self.score >= Game.score_max:
-            self.score = Game.score_max
-            raise TeamWonException
-
-    def add_player(self, player):
-        if player not in self.data:
-            player.team = self
-            self.data.append(player)
-
-    def remove_player(self, player):
-        if player in self.data:
-            player.team = None
-            self.data.remove(player)
-
-    def authorise(self, yes_or_no):
-        for player in self.data:
-            player.is_authorised = yes_or_no
-
-    def toggle_authorisation(self):
-        for player in self.data:
-            player.is_authorised = not player.is_authorised
-
-
 class GameState(ABC):
     def __init__(self, game):
         self.game = game
         self.player_manager = game.player_manager
         self.packet = game.packet
         self.history = []
-        self.actions = []
-
-    def actions_authorised(self):
-        return self.actions
 
     def players_authorised(self):
-        return [p.id for p in self.player_manager.get_all() if p.is_authorised]
+        return [p.id for p in self.player_manager.get_all() if p.can_speak]
 
     def is_player_authorised(self, player_id):
         return player_id in self.player_manager_authorised()
@@ -236,11 +246,11 @@ class GameState(ABC):
         if not self.is_player_authorised(player_id):
             raise WrongPlayerException
         try:
-            ret = self.handle(action, player_id, **kwargs)
+            ret = self.handle(action, **kwargs)
         except:
             raise
         else:
-            self.record(action, player_id, **kwargs)
+            self.record(action, **kwargs)
             return ret
 
     def on_entry(self):
@@ -249,8 +259,8 @@ class GameState(ABC):
     def on_exit(self):
         pass
 
-    def record(self, action, player_id, *args):
-        self.history.append((player_id, action, *args))
+    def record(self, action, **kwargs):
+        self.history.append((action, kwargs))
 
     def reset_history(self):
         self.history = []
@@ -259,47 +269,60 @@ class GameState(ABC):
 class WaitingRoom(GameState):
     def __init__(self, game):
         super().__init__(game)
-        self.actions = ["add_player", "remove_player", "start"]
         self.handle_map = {
             "add_player": self.handle_add_player,
+            "remove_player": self.handle_remove_player,
+            "start_game": self.handle_start_game,
         }
 
     def actions_authorised(self):
         actions = ["add_player", "remove_player"]
-        if self.player_manager.can_start():
-            actions.append("start")
+
+        if self.player_manager.can_start:
+            actions.append("start_game")
+
         return actions
 
     def is_player_authorised(self, player_id):
         return True
 
-    def handle_add_player(self, player_id, **kwargs):
+    def handle_add_player(self, **kwargs):
+        player_id = kwargs.get("player_id", None)
         team_id = kwargs["team_id"]
         if team_id != 1 and team_id != 2:
-            raise ForbiddenActionException("Invalid team number %d" % int(args[0]))
+            raise ForbiddenActionException("Invalid team team_id %d" % int(args[0]))
 
         # 0-indexing FTW
         team_id -= 1
 
-        return self.player_manager.add(player_id, team_id)
+        return self.player_manager.add_player(player_id, team_id)
 
-    def handle(self, action, player_id, **kwargs):
-        import ipdb; ipdb.set_trace()
-        self.handle_map[action](player_id, **kwargs)
+    def handle_remove_player(self, **kwargs):
+        player_id = kwargs["player_id"]
+        return self.player_manager.remove_player(player_id)
 
-        if action == "add_player":
-            if (len(args) != 2 and
-                    not 0 <= int(args[1]) <= 1):
-                raise ForbiddenActionException
-            self.player_manager.add(player_id, args[0], int(args[1]))
-            return "waiting_room"
-        elif action == "remove_player":
-            self.player_manager.remove(player_id)
-            return "waiting_room"
-        elif action == "start":
-            if not self.player_manager.can_start:
-                raise ForbiddenActionException
-            return "Speaking"
+    def handle_start_game(self, **kwargs):
+        if not self.player_manager.can_start:
+            raise ForbiddenActionException
+
+        self.game.current_state = "Speaking"
+
+    def handle(self, action, **kwargs):
+        return self.handle_map[action](**kwargs)
+
+        # if action == "add_player":
+        #     if (len(args) != 2 and
+        #             not 0 <= int(args[1]) <= 1):
+        #         raise ForbiddenActionException
+        #     self.player_manager.add(player_id, args[0], int(args[1]))
+        #     return "waiting_room"
+        # elif action == "remove_player":
+        #     self.player_manager.remove(player_id)
+        #     return "waiting_room"
+        # elif action == "start":
+        #     if not self.player_manager.can_start:
+        #         raise ForbiddenActionException
+        #     return "Speaking"
 
     def on_exit(self):
         for player in self.player_manager:
@@ -386,7 +409,7 @@ class BetState(GameState):
         self.bonus = 0
         self.deffered = True
         self.engaged = False
-        self.hor_daged = False
+        self.under_hordago = False
         self.proposal = 0
         self.winner = None
 
@@ -410,7 +433,7 @@ class BetState(GameState):
 
     def actions_authorised(self):
         actions = []
-        if self.hor_daged:
+        if self.under_hordago:
             actions += "kanta", "tira"
         else:
             actions += "gehiago", "hordago"
@@ -428,7 +451,7 @@ class BetState(GameState):
         self.bet = 1
         self.deffered = True
         self.engaged = False
-        self.hor_daged = False
+        self.under_hordago = False
         self.proposal = 0
         self.bonus = 0
 
@@ -459,7 +482,7 @@ class BetState(GameState):
             self.authorise_opposite_team(player_id)
             return self.own_state
         elif action == "hordago":
-            self.hor_daged = True
+            self.under_hordago = True
             bet = Game.score_max
             return self.handle("gehiago", player_id, str(bet))
         elif action == "tira":
@@ -651,8 +674,8 @@ class Finished(GameState):
                 for state in Game.bet_states:
                     if self.game.states[state].winner is not None:
                         if self.game.states[state].deffered:
-                            self.player_manager.teams[self.game.states[state].winner.number].add_score(self.game.states[state].bet)
-                        self.player_manager.teams[self.game.states[state].winner.number].add_score(self.game.states[state].bonus)
+                            self.player_manager.teams[self.game.states[state].winner.team_id].add_score(self.game.states[state].bet)
+                        self.player_manager.teams[self.game.states[state].winner.team_id].add_score(self.game.states[state].bonus)
             except TeamWonException:
                 self.game.finished = True
 
@@ -708,6 +731,26 @@ class Game:
     @current_state.setter
     def current_state(self, value):
         self._current_state = value
+
+    def data(self):
+        data = {
+            "players": [],
+            "teams": []
+        }
+
+        for player in self.player_manager.all_players:
+            data["players"].append({
+                "player_id": player.player_id,
+                "team_id" : player.team_id
+            })
+
+        for team in self.player_manager.teams:
+            data["teams"].append({
+                "team_id": team.team_id,
+                "players": [player.player_id for player in team]
+            })
+
+        return data
 
     def do(self, message):
         action = message[0]

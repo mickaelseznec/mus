@@ -14,19 +14,26 @@ class TestPlayerManager(unittest.TestCase):
     def test_add_one_player(self):
         self.assertEqual(len(self.player_manager.teams[0]), 0)
 
-        player_id = self.player_manager.add(None, 0)
+        player_id = self.player_manager.add_player(None, 0)
 
         self.assertEqual(len(self.player_manager.teams[0]), 1)
         self.assertEqual(player_id, 0)
+
+    def test_delete_player(self):
+        player_id = self.player_manager.add_player(None, 0)
+        self.assertEqual(len(self.player_manager.teams[0]), 1)
+
+        self.player_manager.remove_player(player_id)
+        self.assertEqual(len(self.player_manager.teams[0]), 0)
 
     def test_many_players(self):
         self.assertEqual(len(self.player_manager.teams[0]), 0)
         self.assertEqual(len(self.player_manager.teams[1]), 0)
 
-        player_id_1 = self.player_manager.add(None, 0)
-        player_id_2 = self.player_manager.add(None, 0)
-        player_id_3 = self.player_manager.add(None, 1)
-        player_id_4 = self.player_manager.add(None, 1)
+        player_id_1 = self.player_manager.add_player(None, 0)
+        player_id_2 = self.player_manager.add_player(None, 0)
+        player_id_3 = self.player_manager.add_player(None, 1)
+        player_id_4 = self.player_manager.add_player(None, 1)
 
         self.assertEqual(len(self.player_manager.teams[0]), 2)
         self.assertEqual(len(self.player_manager.teams[1]), 2)
@@ -35,33 +42,80 @@ class TestPlayerManager(unittest.TestCase):
         self.assertEqual(len(player_id_list), len(set(player_id_list)))
 
     def test_cannot_exceed_two_per_team(self):
-        player_id_1 = self.player_manager.add(None, 0)
-        player_id_2 = self.player_manager.add(None, 0)
+        player_id_1 = self.player_manager.add_player(None, 0)
+        player_id_2 = self.player_manager.add_player(None, 0)
 
         self.assertRaises(mus.ForbiddenActionException,
-                          self.player_manager.add, None, 0)
+                          self.player_manager.add_player, None, 0)
 
-        player_id_3 = self.player_manager.add(None, 1)
-        player_id_4 = self.player_manager.add(None, 1)
+        player_id_3 = self.player_manager.add_player(None, 1)
+        player_id_4 = self.player_manager.add_player(None, 1)
 
-        self.player_manager.add(player_id_1, 0)
+        self.player_manager.add_player(player_id_1, 0)
 
         self.assertRaises(mus.ForbiddenActionException,
-                          self.player_manager.add, player_id_1, 1)
+                          self.player_manager.add_player, player_id_1, 1)
 
     def test_change_teams(self):
-        player_id_1 = self.player_manager.add(None, 0)
-        player_id_2 = self.player_manager.add(None, 0)
+        player_id_1 = self.player_manager.add_player(None, 0)
+        player_id_2 = self.player_manager.add_player(None, 0)
 
         self.assertEqual(len(self.player_manager.teams[0]), 2)
 
         player_id_1_save = player_id_1
-        player_id_1 = self.player_manager.add(player_id_1, 1)
+        player_id_1 = self.player_manager.add_player(player_id_1, 1)
 
         self.assertEqual(player_id_1_save, player_id_1)
 
         self.assertEqual(len(self.player_manager.teams[0]), 1)
         self.assertEqual(len(self.player_manager.teams[1]), 1)
+
+
+class TestWaitingRoom(unittest.TestCase):
+    def setUp(self):
+        self.game = Game()
+
+    def test_add_players(self):
+        player_1 = self.game.do(("add_player", {"team_id": 1}))
+        player_2 = self.game.do(("add_player", {"team_id": 2}))
+
+        player_3 = self.game.do(("add_player", {"team_id": 1}))
+        player_4 = self.game.do(("add_player", {"team_id": 2}))
+
+        self.assertRaises(mus.ForbiddenActionException,
+                          self.game.do, ("add_player", {"team_id": 2}))
+
+    def test_add_same_player(self):
+        player_1 = self.game.do(("add_player", {"team_id": 1}))
+        player_1_new = self.game.do(("add_player", {"team_id": 1, "player_id": player_1}))
+
+        self.assertEqual(player_1, player_1_new)
+
+    def test_remove_player(self):
+        player_1 = self.game.do(("add_player", {"team_id": 1}))
+        self.game.do(("remove_player", {"player_id": 1}))
+
+    def test_start_with_two_players(self):
+        player_1 = self.game.do(("add_player", {"team_id": 1}))
+        player_2 = self.game.do(("add_player", {"team_id": 2}))
+
+        self.game.do(("start_game", {}))
+
+    def test_cannot_start_with_three_players(self):
+        player_1 = self.game.do(("add_player", {"team_id": 1}))
+        player_2 = self.game.do(("add_player", {"team_id": 2}))
+        player_3 = self.game.do(("add_player", {"team_id": 1}))
+
+        self.assertRaises(mus.ForbiddenActionException,
+                          self.game.do, ("start_game", {}))
+
+    def test_start_with_four_players(self):
+        player_1 = self.game.do(("add_player", {"team_id": 1}))
+        player_2 = self.game.do(("add_player", {"team_id": 2}))
+        player_3 = self.game.do(("add_player", {"team_id": 1}))
+        player_4 = self.game.do(("add_player", {"team_id": 2}))
+
+        self.game.do(("start_game", {}))
 
 
 # class TestInitialMus(unittest.TestCase):
