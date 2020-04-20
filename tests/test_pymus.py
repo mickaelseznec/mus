@@ -76,146 +76,98 @@ class TestWaitingRoom(unittest.TestCase):
         self.game = Game()
 
     def test_add_players(self):
-        player_1 = self.game.do(("add_player", {"team_id": 1}))
-        player_2 = self.game.do(("add_player", {"team_id": 2}))
+        player_1 = self.game.do(("add_player", {"team_id": 1}))["result"]
+        player_2 = self.game.do(("add_player", {"team_id": 2}))["result"]
 
-        player_3 = self.game.do(("add_player", {"team_id": 1}))
-        player_4 = self.game.do(("add_player", {"team_id": 2}))
+        player_3 = self.game.do(("add_player", {"team_id": 1}))["result"]
+        player_4 = self.game.do(("add_player", {"team_id": 2}))["result"]
 
-        self.assertRaises(mus.ForbiddenActionException,
-                          self.game.do, ("add_player", {"team_id": 2}))
+        res = self.game.do(("add_player", {"team_id": 2}))
+        self.assertEqual(res["status"], "Forbidden")
 
     def test_add_same_player(self):
-        player_1 = self.game.do(("add_player", {"team_id": 1}))
-        player_1_new = self.game.do(("add_player", {"team_id": 1, "player_id": player_1}))
+        player_1 = self.game.do(("add_player", {"team_id": 1}))["result"]
+        player_1_new = self.game.do(("add_player", {"team_id": 1, "player_id": player_1}))["result"]
 
         self.assertEqual(player_1, player_1_new)
 
     def test_remove_player(self):
-        player_1 = self.game.do(("add_player", {"team_id": 1}))
-        self.game.do(("remove_player", {"player_id": 1}))
+        player_1 = self.game.do(("add_player", {"team_id": 1}))["result"]
+        self.game.do(("remove_player", {"player_id": player_1}))["result"]
+
+        status = self.game.status()
+        self.assertTrue(player_1 not in (player["player_id"] for player in status["players"]))
 
     def test_start_with_two_players(self):
-        player_1 = self.game.do(("add_player", {"team_id": 1}))
-        player_2 = self.game.do(("add_player", {"team_id": 2}))
+        player_1 = self.game.do(("add_player", {"team_id": 1}))["result"]
+        player_2 = self.game.do(("add_player", {"team_id": 2}))["result"]
 
         self.game.do(("start_game", {}))
+
+        status = self.game.status()
+        self.assertEqual(status["current_state"], "Speaking")
 
     def test_cannot_start_with_three_players(self):
-        player_1 = self.game.do(("add_player", {"team_id": 1}))
-        player_2 = self.game.do(("add_player", {"team_id": 2}))
-        player_3 = self.game.do(("add_player", {"team_id": 1}))
+        player_1 = self.game.do(("add_player", {"team_id": 1}))["result"]
+        player_2 = self.game.do(("add_player", {"team_id": 2}))["result"]
+        player_3 = self.game.do(("add_player", {"team_id": 1}))["result"]
 
-        self.assertRaises(mus.ForbiddenActionException,
-                          self.game.do, ("start_game", {}))
+        res = self.game.do(("start_game", {}))
+        self.assertEqual(res["status"], "Forbidden")
+
+        status = self.game.status()
+        self.assertEqual(status["current_state"], "Waiting Room")
 
     def test_start_with_four_players(self):
-        player_1 = self.game.do(("add_player", {"team_id": 1}))
-        player_2 = self.game.do(("add_player", {"team_id": 2}))
-        player_3 = self.game.do(("add_player", {"team_id": 1}))
-        player_4 = self.game.do(("add_player", {"team_id": 2}))
+        player_1 = self.game.do(("add_player", {"team_id": 1}))["result"]
+        player_2 = self.game.do(("add_player", {"team_id": 2}))["result"]
+        player_3 = self.game.do(("add_player", {"team_id": 1}))["result"]
+        player_4 = self.game.do(("add_player", {"team_id": 2}))["result"]
 
         self.game.do(("start_game", {}))
 
+        status = self.game.status()
+        self.assertEqual(status["current_state"], "Speaking")
 
-# class TestInitialMus(unittest.TestCase):
 
-#     def setUp(self):
-#         self.game = Game(0)
-#         self.christophe = (1, "Christophe")
-#         self.gerard = (2, "Gerard")
-#         self.thierry = (3, "Thierry")
-#         self.michel = (4, "Michel")
+class TestInitialSpeakingTrading(unittest.TestCase):
 
-#     def test_other_team(self):
-#         team_0 = self.game.players.get_team(0)
-#         team_1 = self.game.players.get_team(1)
-#         self.assertEqual(team_0, self.game.players.other_team(team_1))
-#         self.assertEqual(team_1, self.game.players.other_team(team_0))
+    def setUp(self):
+        self.game = Game()
 
-#     def test_add_player(self):
-#         self.game.do("add_player", *self.christophe, "1")
-#         self.assertTrue(self.christophe[0] in self.game.players)
+        self.player_1 = self.game.do(("add_player", {"team_id": 1}))["result"]
+        self.player_2 = self.game.do(("add_player", {"team_id": 2}))["result"]
+        self.player_3 = self.game.do(("add_player", {"team_id": 1}))["result"]
+        self.player_4 = self.game.do(("add_player", {"team_id": 2}))["result"]
+        self.game.do(("start_game", {}))
 
-#     def test_add_multiple_player(self):
-#         self.game.do("add_player", *self.christophe, "1")
-#         self.game.do("add_player", *self.christophe, "1")
-#         self.assertEqual(len(self.game.players.get_team(1)), 1)
+    def test_in_right_state(self):
+        status = self.game.status()
+        self.assertEqual(status["current_state"], "Speaking")
 
-#     def test_remove_player(self):
-#         self.game.do("add_player", *self.christophe, "1")
-#         self.game.do("remove_player", self.christophe[0])
-#         self.assertTrue(self.christophe not in self.game.players)
+    def test_who_can_speak(self):
+        player_can_speak = {player["player_id"]: player["can_speak"] for
+                         player in self.game.status()["players"]}
 
-#     def test_change_team(self):
-#         self.game.do("add_player", *self.christophe, "1")
-#         self.game.do("add_player", *self.christophe, "0")
-#         self.assertTrue(self.game.players[self.christophe[0]].team.number == 0)
+        self.assertTrue(player_can_speak[self.player_1])
+        self.assertTrue(player_can_speak[self.player_3])
+        self.assertFalse(player_can_speak[self.player_2])
+        self.assertFalse(player_can_speak[self.player_4])
 
-#     def test_can_join_team(self):
-#         self.assertTrue(self.game.can_join_team(0))
-#         self.assertTrue(self.game.can_join_team(1))
-#         self.game.do("add_player", *self.christophe, "0")
-#         self.game.do("add_player", *self.gerard, "0")
-#         self.assertFalse(self.game.can_join_team(0))
-#         self.assertTrue(self.game.can_join_team(1))
+        res = self.game.do(("mus", {"player_id": self.player_2}))
+        self.assertEqual(res["status"], "WrongPlayer")
 
-#     def test_can_start(self):
-#         self.assertFalse("start" in self.game.state.actions_authorised())
-#         self.game.do("add_player", *self.christophe, "0")
-#         self.game.do("add_player", *self.gerard, "1")
-#         self.assertTrue("start" in self.game.state.actions_authorised())
-#         self.game.do("add_player", *self.thierry, "1")
-#         self.assertFalse("start" in self.game.state.actions_authorised())
-#         self.game.do("add_player", *self.michel, "0")
-#         self.assertTrue("start" in self.game.state.actions_authorised())
+        res = self.game.do(("mus", {"player_id": self.player_1}))
+        self.assertEqual(res["status"], "OK")
 
-#     def test_is_started(self):
-#         self.assertEqual(self.game.current, "waiting_room")
-#         self.game.do("add_player", *self.christophe, "0")
-#         self.game.do("add_player", *self.gerard, "1")
-#         self.game.do("start", self.gerard[0])
-#         self.assertNotEqual(self.game.current, "waiting_room")
+        res = self.game.do(("mus", {"player_id": self.player_3}))
+        self.assertEqual(res["status"], "WrongPlayer")
 
-# class TestTwoPlayerSpeakTrade(unittest.TestCase):
+        res = self.game.do(("mus", {"player_id": self.player_4}))
+        self.assertEqual(res["status"], "OK")
 
-#     def setUp(self):
-#         self.game = Game(0)
-#         self.christophe = 1
-#         self.gerard = 2
-#         self.game.do("add_player", 1, "Christophe", "0")
-#         self.game.do("add_player", 2, "Gerard", "1")
-#         self.game.do("start", self.christophe)
-
-#     def test_first_turn(self):
-#         self.assertEqual(self.game.current, "Speaking")
-
-#     def test_play_mus(self):
-#         self.assertTrue(self.christophe in self.game.state.players_authorised())
-#         self.assertRaises(mus.ForbiddenActionException, self.game.do, "mus", self.gerard)
-#         self.assertTrue(self.christophe in self.game.state.players_authorised())
-#         self.game.do("mus", self.christophe)
-#         self.assertTrue(self.gerard in self.game.state.players_authorised())
-#         self.game.do("mus", self.gerard)
-
-#         old_gerard_cards = self.game.players[self.gerard].get_cards().copy()
-#         old_christophe_cards = self.game.players[self.christophe].get_cards().copy()
-#         self.game.do("change", self.christophe, "2")
-#         self.game.do("change", self.christophe, "3")
-#         self.game.do("confirm", self.christophe)
-
-#         self.assertRaises(mus.ForbiddenActionException,
-#                           self.game.do, "confirm", self.gerard)
-#         self.game.do("change", self.gerard, "1")
-#         self.game.do("confirm", self.gerard)
-
-#         new_gerard_cards = self.game.players[self.gerard].get_cards().copy()
-#         new_christophe_cards = self.game.players[self.christophe].get_cards().copy()
-
-#         self.assertTrue(old_christophe_cards[0] in new_christophe_cards)
-#         self.assertTrue(old_christophe_cards[1] not in new_christophe_cards)
-#         self.assertTrue(old_christophe_cards[2] not in new_christophe_cards)
-#         self.assertTrue(old_christophe_cards[3] in new_christophe_cards)
+        status = self.game.status()
+        self.assertEqual(status["current_state"], "Trading")
 
 # class TestTwoPlayerHandiak(unittest.TestCase):
 #     own_name = "Haundia"
