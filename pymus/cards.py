@@ -40,6 +40,10 @@ class Packet:
     def discard(self, card: Card) -> None:
         self.discarded.append(card)
 
+    def exchange(self, card:Card) -> Card:
+        self.discard(card)
+        return self.draw()
+
 
 @total_ordering
 @dataclass

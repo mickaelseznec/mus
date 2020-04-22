@@ -1,5 +1,6 @@
 from abc import ABC
 from collections import UserList, deque
+from copy import deepcopy
 from itertools import chain
 
 from cards import Card, Packet, Hand, HaundiaHand, TipiaHand, PariakHand, JokuaHand
@@ -37,6 +38,10 @@ class Player:
 
     def draw_new_hand(self, packet):
         self._cards = sorted(packet.draw() for _ in range(4))
+
+    def exchange_cards(self, index_set, packet):
+        for index in index_set:
+            self._cards[index] = packet.exchange(self._cards[index])
 
     def get_cards(self):
         return self._cards
@@ -187,9 +192,6 @@ class GameState(ABC):
         return (self.players_status[player_id]["participates"] and
                 self.player_manager.get_player_by_id(player_id).can_speak)
 
-    def authorise_next_player(self):
-        self.player_manager.authorise_next_player()
-
     def handle(self, action, **kwargs):
         return self.handle_map[action](**kwargs)
 
@@ -208,6 +210,9 @@ class GameState(ABC):
         else:
             self.record(action, **kwargs)
             return ret
+
+    def public_representation(self):
+        pass
 
     def on_entry(self):
         pass
@@ -244,7 +249,7 @@ class WaitingRoom(GameState):
 
     def handle_add_player(self, team_id, player_id=None):
         if team_id != 1 and team_id != 2:
-            raise ForbiddenActionException("Invalid team team_id %d" % int(args[0]))
+            raise ForbiddenActionException("Invalid team team_id %d" % team_id)
         # 0-indexing FTW
         team_id -= 1
 
@@ -275,10 +280,6 @@ class Speaking(GameState):
             "mintza": self.handle_mintza,
         }
 
-
-    def possible_actions(self):
-        return ("mus", "mintza")
-
     def handle_mus(self, player_id):
         player = self.player_manager.get_player_by_id(player_id)
         self.team_status[player.team_id] = "mus"
@@ -300,44 +301,73 @@ class Speaking(GameState):
         first_players_team = self.player_manager.all_players_echku_ordered[0].team_id
         self.player_manager.authorise_team(first_players_team)
 
+    def public_representation(self):
+        return {"team_status": self.team_status}
+
 
 class Trading(GameState):
     def __init__(self, game):
         super().__init__(game)
-        self.actions = ["change", "confirm"]
+        self.handle_map = {
+            "change": self.handle_change,
+            "toggle": self.handle_toggle,
+            "confirm": self.handle_confirm
+        }
 
     def is_player_authorised(self, player_id):
         return True
 
-    def handle(self, action, player_id, *args):
-        if action == "confirm":
-            if len(self.player_manager[player_id].asks) == 0:
-                raise ForbiddenActionException
-            self.player_manager[player_id].said = "confirm"
-            if all(player.said == "confirm" for player in self.player_manager):
-                for player in self.player_manager:
-                    for i in list(player.asks):
-                        self.packet.discard(player.cards[i])
-                        player.cards[i] = self.packet.draw()
-                return "Speaking"
-            return "Trading"
-        elif action == "change":
-            index = int(args[0]) - 1
-            if len(args) != 1 or not 0 <= index <= 3:
-                raise ForbiddenActionException
-            if index in self.player_manager[player_id].asks:
-                self.player_manager[player_id].asks.remove(index)
-            else:
-                self.player_manager[player_id].asks.add(index)
-            return "Trading"
+    def validate_card_index(self, index):
+        if not 1<= index <= 4:
+                raise ForbiddenActionException("Invalid card_index %d" % index)
+
+    def handle_change(self, player_id, indices):
+        for index in indices:
+            self.validate_card_index(index)
+
+        # 0-indexing FTW
+        zero_indexed_indices = (index - 1 for index in indices)
+        self.player_status[player_id]["asks"] = set(zero_indexed_indices)
+
+    def handle_toggle(self, player_id, index):
+        self.validate_card_index(index)
+
+        # 0-indexing FTW
+        index = index - 1
+
+        if index not in self.player_status[player_id]["asks"]:
+            self.player_status[player_id]["asks"].add(index)
+        else:
+            self.player_status[player_id]["asks"].remove(index)
+
+    def handle_confirm(self, player_id):
+        if len(self.player_status[player_id]["asks"]) == 0:
+            raise ForbiddenActionException
+
+        self.player_status[player_id]["waiting_confirmation"] = False
+
+        if all(not player["waiting_confirmation"] for player in self.player_status.values()):
+            self.transition_to_speaking()
+
+    def transition_to_speaking(self):
+        for player in self.player_manager.all_players_team_ordered:
+            player.exchange_cards(self.player_status[player.player_id]["asks"], self.packet)
+        self.game.current_state = "Speaking"
 
     def on_entry(self):
         self.everyone_participates()
         self.player_status = {
-            player.player_id: {"confirmed": False,
+            player.player_id: {"waiting_confirmation": True,
                                "asks": set()}
             for player in self.player_manager.all_players_team_ordered
         }
+
+    def public_representation(self):
+        public_status = deepcopy(self.player_status)
+        for player_id in public_status.keys():
+            public_status[player_id]["asks"] = len(public_status[player_id]["asks"])
+
+        return {"player_status": public_status}
 
 
 class BetState(GameState):
@@ -656,6 +686,7 @@ class Game:
     def __init__(self):
         self.player_manager = PlayerManager()
         self.packet = Packet()
+        self.visited_states = set()
         self._current_state = "Waiting Room"
 
         self.states = {
@@ -675,6 +706,7 @@ class Game:
 
     @current_state.setter
     def current_state(self, value):
+        self.visited_states.add(value)
         self._current_state = value
 
     def record_scores(self):
@@ -700,6 +732,9 @@ class Game:
                 "players": [player.player_id for player in team]
             })
 
+        for state in self.visited_states:
+            data[state] = self.states[state].public_representation()
+
         return data
 
     def do(self, message):
@@ -719,4 +754,4 @@ class Game:
                 self.states[old_state].on_exit()
                 self.states[self.current_state].on_entry()
 
-            return {"status": "OK", "result": answer}
+            return {"status": "OK", "result": answer, "state": self.status()}
