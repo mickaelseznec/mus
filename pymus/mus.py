@@ -1,9 +1,12 @@
+import json
+import uuid
+
 from abc import ABC
 from collections import UserList, deque
 from copy import deepcopy
 from itertools import chain
 
-from cards import Card, Packet, Hand, HaundiaHand, TipiaHand, PariakHand, JokuaHand
+from cards import Card, Packet, Hand, HaundiaHand, TipiaHand, PariakHand, JokuaHand, JSONCardEncoder
 
 class ForbiddenActionException(Exception):
     pass
@@ -18,7 +21,8 @@ class TeamWonException(Exception):
 
 
 class Player:
-    def __init__(self, player_id):
+    def __init__(self, player_id, public_id):
+        self.public_id = public_id
         self.player_id = player_id
         self.team_reference = None
         self.can_speak = False
@@ -42,6 +46,7 @@ class Player:
     def exchange_cards(self, index_set, packet):
         for index in index_set:
             self._cards[index] = packet.exchange(self._cards[index])
+        self._cards = sorted(self._cards)
 
     def get_cards(self):
         return self._cards
@@ -88,10 +93,11 @@ class PlayerManager:
             return None
 
     def create_new_player(self):
-        player_id = self._id_counter
+        player_id = uuid.uuid4().hex
+        public_id = self._id_counter
         self._id_counter += 1
 
-        return Player(player_id)
+        return Player(player_id, public_id)
 
     def detach_player(self, player):
         player_team = player.team_reference
@@ -112,7 +118,7 @@ class PlayerManager:
         player = self.get_player_by_id(player_id)
 
         if player and player.team_id == team_id:
-            return player_id
+            return player.player_id, player.public_id
 
         if len(self.teams[team_id]) >= 2:
             raise ForbiddenActionException("Team %d already full" % team_id)
@@ -123,7 +129,7 @@ class PlayerManager:
             self.detach_player(player)
         self.attach_player(player, team_id)
 
-        return player.player_id
+        return player.player_id, player.public_id
 
     def remove_player(self, player_id):
         player = self.get_player_by_id(player_id)
@@ -198,18 +204,20 @@ class GameState(ABC):
     def run(self, action, **kwargs):
         player_id = kwargs.get("player_id", None)
 
+        if action == "get_cards":
+            return json.dumps(self.player_manager.get_player_by_id(player_id).get_cards(),
+                              cls=JSONCardEncoder)
+
         if action not in self.handle_map.keys():
             raise ForbiddenActionException
+
         if not self.is_player_authorised(player_id):
             raise WrongPlayerException
 
-        try:
-            ret = self.handle(action, **kwargs)
-        except:
-            raise
-        else:
-            self.record(action, **kwargs)
-            return ret
+        ret = self.handle(action, **kwargs)
+        self.record(action, **kwargs)
+
+        return ret
 
     def public_representation(self):
         pass
@@ -721,7 +729,7 @@ class Game:
 
         for player in self.player_manager.all_players_team_ordered:
             data["players"].append({
-                "player_id": player.player_id,
+                "player_id": player.public_id,
                 "team_id" : player.team_id + 1,
                 "can_speak": player.can_speak,
             })
@@ -729,7 +737,7 @@ class Game:
         for team in self.player_manager.teams:
             data["teams"].append({
                 "team_id": team.team_id + 1,
-                "players": [player.player_id for player in team]
+                "players": [player.public_id for player in team]
             })
 
         for state in self.visited_states:

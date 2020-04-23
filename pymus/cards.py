@@ -1,5 +1,6 @@
-import random
 import itertools as it
+import json
+import random
 
 from abc import ABC, abstractmethod
 from collections import deque, Counter
@@ -15,6 +16,11 @@ class Card:
     def is_same(self, other) -> bool:
         return self.value == other.value and self.color == other.color
 
+class JSONCardEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Card):
+            return {"Card": {"value": obj.value, "color": obj.color}}
+        return json.JSONEncoder.default(self, obj)
 
 class Packet:
     basque_colors = ("Copas", "Espadas", "Bastos", "Oros")
@@ -57,6 +63,7 @@ class Hand(ABC):
     @abstractmethod
     def __eq__(self, other):
         pass
+
 
 @total_ordering
 class HaundiaHand(Hand):

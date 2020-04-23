@@ -1,3 +1,4 @@
+import json
 import sys
 sys.path.append("pymus")
 
@@ -17,13 +18,12 @@ class TestPlayerManager(unittest.TestCase):
         player_id = self.player_manager.add_player(None, 0)
 
         self.assertEqual(len(self.player_manager.teams[0]), 1)
-        self.assertEqual(player_id, 0)
 
     def test_delete_player(self):
         player_id = self.player_manager.add_player(None, 0)
         self.assertEqual(len(self.player_manager.teams[0]), 1)
 
-        self.player_manager.remove_player(player_id)
+        self.player_manager.remove_player(player_id[0])
         self.assertEqual(len(self.player_manager.teams[0]), 0)
 
     def test_many_players(self):
@@ -51,10 +51,10 @@ class TestPlayerManager(unittest.TestCase):
         player_id_3 = self.player_manager.add_player(None, 1)
         player_id_4 = self.player_manager.add_player(None, 1)
 
-        self.player_manager.add_player(player_id_1, 0)
+        self.player_manager.add_player(player_id_1[0], 0)
 
         self.assertRaises(mus.ForbiddenActionException,
-                          self.player_manager.add_player, player_id_1, 1)
+                          self.player_manager.add_player, player_id_1[0], 1)
 
     def test_change_teams(self):
         player_id_1 = self.player_manager.add_player(None, 0)
@@ -63,7 +63,7 @@ class TestPlayerManager(unittest.TestCase):
         self.assertEqual(len(self.player_manager.teams[0]), 2)
 
         player_id_1_save = player_id_1
-        player_id_1 = self.player_manager.add_player(player_id_1, 1)
+        player_id_1 = self.player_manager.add_player(player_id_1[0], 1)
 
         self.assertEqual(player_id_1_save, player_id_1)
 
@@ -88,48 +88,48 @@ class TestWaitingRoom(unittest.TestCase, TestGame):
         self.game = Game()
 
     def test_add_players(self):
-        player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        player_2, _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        (player_1, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
 
-        player_3, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        player_4, _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        (player_3, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (player_4, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
 
         self.unwrap_fails(self.game.do(("add_player", {"team_id": 2})), "Forbidden")
 
     def test_add_same_player(self):
         player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        player_1_new, _ = self.unwrap(self.game.do(("add_player",
-                                                    {"team_id": 1, "player_id": player_1})))
+        player_1_new, _ = self.unwrap(self.game.do((
+            "add_player", {"team_id": 1, "player_id": player_1[0]})))
 
         self.assertEqual(player_1, player_1_new)
 
     def test_remove_player(self):
         player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
 
-        _, state = self.unwrap(self.game.do(("remove_player", {"player_id": player_1})))
-        self.assertTrue(player_1 not in (player["player_id"] for player in state["players"]))
+        _, state = self.unwrap(self.game.do(("remove_player", {"player_id": player_1[0]})))
+        self.assertTrue(player_1[1] not in (player["player_id"] for player in state["players"]))
 
     def test_start_with_two_players(self):
-        player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        player_2, _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        (player_1, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
 
         self.unwrap(self.game.do(("start_game", {})))
         self.assertState("Speaking")
 
     def test_cannot_start_with_three_players(self):
-        player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        player_2, _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
-        player_3, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (player_1, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        (player_3, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
 
         self.unwrap_fails(self.game.do(("start_game", {})), "Forbidden")
 
         self.assertState("Waiting Room")
 
     def test_start_with_four_players(self):
-        player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        player_2, _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
-        player_3, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        player_4, _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        (player_1, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        (player_3, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (player_4, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
 
         self.unwrap(self.game.do(("start_game", {})))
 
@@ -141,10 +141,14 @@ class TestSpeaking(unittest.TestCase, TestGame):
     def setUp(self):
         self.game = Game()
 
-        self.player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        self.player_2, _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
-        self.player_3, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        self.player_4, _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        (self.player_1, self.player_1_public), _ = self.unwrap(self.game.do((
+            "add_player", {"team_id": 1})))
+        (self.player_2, self.player_2_public), _ = self.unwrap(self.game.do((
+            "add_player", {"team_id": 2})))
+        (self.player_3, self.player_3_public), _ = self.unwrap(self.game.do((
+            "add_player", {"team_id": 1})))
+        (self.player_4, self.player_4_public), _ = self.unwrap(self.game.do((
+            "add_player", {"team_id": 2})))
         self.unwrap(self.game.do(("start_game", {})))
         self.assertState("Speaking")
 
@@ -152,10 +156,10 @@ class TestSpeaking(unittest.TestCase, TestGame):
         player_can_speak = {player["player_id"]: player["can_speak"] for
                          player in self.game.status()["players"]}
 
-        self.assertTrue(player_can_speak[self.player_1])
-        self.assertTrue(player_can_speak[self.player_3])
-        self.assertFalse(player_can_speak[self.player_2])
-        self.assertFalse(player_can_speak[self.player_4])
+        self.assertTrue(player_can_speak[self.player_1_public])
+        self.assertTrue(player_can_speak[self.player_3_public])
+        self.assertFalse(player_can_speak[self.player_2_public])
+        self.assertFalse(player_can_speak[self.player_4_public])
 
         self.unwrap_fails(self.game.do(("mus", {"player_id": self.player_2})), "WrongPlayer")
         self.unwrap(self.game.do(("mus", {"player_id": self.player_1})))
@@ -174,10 +178,10 @@ class TestTrading(unittest.TestCase, TestGame):
     def setUp(self):
         self.game = Game()
 
-        self.player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        self.player_2, _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
-        self.player_3, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        self.player_4, _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        (self.player_1, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (self.player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        (self.player_3, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (self.player_4, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
         self.unwrap(self.game.do(("start_game", {})))
 
         self.unwrap(self.game.do(("mus", {"player_id": self.player_1})))
@@ -211,6 +215,13 @@ class TestTrading(unittest.TestCase, TestGame):
         self.assertEqual(state["Trading"]["player_status"][self.player_3]["asks"], 2)
 
     def test_change(self):
+        old_player_cards = {}
+        for player in (self.player_1, self.player_2, self.player_3, self.player_4):
+            old_player_cards[player] = json.loads(self.unwrap(self.game.do((
+                "get_cards", {"player_id": player})))[0])
+
+        self.unwrap(self.game.do(("change", {"player_id": self.player_1, "indices": [1, 2, 3, 4]})))
+
         self.unwrap(self.game.do(("change", {"player_id": self.player_1, "indices": [1, 2, 3, 4]})))
         self.unwrap(self.game.do(("confirm", {"player_id": self.player_1})))
         self.unwrap(self.game.do(("change", {"player_id": self.player_2, "indices": [1, 2]})))
@@ -221,8 +232,33 @@ class TestTrading(unittest.TestCase, TestGame):
         self.unwrap(self.game.do(("change", {"player_id": self.player_4, "indices": [1]})))
         self.unwrap(self.game.do(("confirm", {"player_id": self.player_4})))
 
-        status = self.game.status()
+        new_player_1_hand, _ = self.unwrap(self.game.do(("get_cards", {"player_id": self.player_1})))
+        new_player_2_hand, _ = self.unwrap(self.game.do(("get_cards", {"player_id": self.player_2})))
+        new_player_3_hand, _ = self.unwrap(self.game.do(("get_cards", {"player_id": self.player_3})))
+        new_player_4_hand, _ = self.unwrap(self.game.do(("get_cards", {"player_id": self.player_4})))
 
+        new_player_cards = {}
+        for player in (self.player_1, self.player_2, self.player_3, self.player_4):
+            new_player_cards[player] = json.loads(self.unwrap(self.game.do((
+                "get_cards", {"player_id": player})))[0])
+
+        self.assertTrue(all([old_card not in new_player_cards[self.player_1]
+             for old_card in old_player_cards[self.player_1]]))
+
+        self.assertTrue(all([old_card not in new_player_cards[self.player_2]
+             for old_card in [old_player_cards[self.player_2][i] for i in (0, 1)]]))
+        self.assertTrue(all([old_card in new_player_cards[self.player_2]
+             for old_card in [old_player_cards[self.player_2][i] for i in (2, 3)]]))
+
+        self.assertTrue(all([old_card not in new_player_cards[self.player_3]
+             for old_card in [old_player_cards[self.player_3][i] for i in (0, )]]))
+        self.assertTrue(all([old_card in new_player_cards[self.player_3]
+             for old_card in [old_player_cards[self.player_3][i] for i in (1, 2, 3)]]))
+
+        self.assertTrue(all([old_card not in new_player_cards[self.player_4]
+             for old_card in [old_player_cards[self.player_4][i] for i in (0, )]]))
+        self.assertTrue(all([old_card in new_player_cards[self.player_4]
+             for old_card in [old_player_cards[self.player_4][i] for i in (1, 2, 3)]]))
 
 # class TestTwoPlayerHandiak(unittest.TestCase):
 #     own_name = "Haundia"
