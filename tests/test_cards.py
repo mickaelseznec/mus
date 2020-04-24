@@ -4,7 +4,7 @@ sys.path.append("pymus")
 import unittest
 import itertools as it
 
-from cards import Card, HaundiaHand, TipiaHand, PariakHand, JokuaHand, Packet
+from Cards import Card, HaundiaHand, TipiaHand, PariakHand, JokuaHand, Packet
 
 class PacketTestCase(unittest.TestCase):
     def setUp(self):

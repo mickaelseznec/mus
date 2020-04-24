@@ -5,8 +5,8 @@ sys.path.append("pymus")
 import itertools as it
 import unittest
 
-import mus
-from mus import Game, Card, Team, PlayerManager
+import PyMus as mus
+from PyMus import Game, Card, Team, PlayerManager
 
 class TestPlayerManager(unittest.TestCase):
     def setUp(self):
