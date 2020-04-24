@@ -113,7 +113,7 @@ class TestWaitingRoom(unittest.TestCase, TestGame):
         (player_1, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
         (player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
 
-        self.unwrap(self.game.do(("start_game", {})))
+        self.unwrap(self.game.do(("start_game", {"player_id": player_1})))
         self.assertState("Speaking")
 
     def test_cannot_start_with_three_players(self):
@@ -121,7 +121,7 @@ class TestWaitingRoom(unittest.TestCase, TestGame):
         (player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
         (player_3, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
 
-        self.unwrap_fails(self.game.do(("start_game", {})), "Forbidden")
+        self.unwrap_fails(self.game.do(("start_game", {"player_id": player_1})), "Forbidden")
 
         self.assertState("Waiting Room")
 
@@ -131,7 +131,7 @@ class TestWaitingRoom(unittest.TestCase, TestGame):
         (player_3, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
         (player_4, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
 
-        self.unwrap(self.game.do(("start_game", {})))
+        self.unwrap(self.game.do(("start_game", {"player_id": player_1})))
 
         self.assertState("Speaking")
 
@@ -149,7 +149,7 @@ class TestSpeaking(unittest.TestCase, TestGame):
             "add_player", {"team_id": 1})))
         (self.player_4, self.player_4_public), _ = self.unwrap(self.game.do((
             "add_player", {"team_id": 2})))
-        self.unwrap(self.game.do(("start_game", {})))
+        self.unwrap(self.game.do(("start_game", {"player_id": self.player_1})))
         self.assertState("Speaking")
 
     def test_who_can_speak(self):
@@ -182,7 +182,7 @@ class TestTrading(unittest.TestCase, TestGame):
         (self.player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
         (self.player_3, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
         (self.player_4, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
-        self.unwrap(self.game.do(("start_game", {})))
+        self.unwrap(self.game.do(("start_game", {"player_id": self.player_1})))
 
         self.unwrap(self.game.do(("mus", {"player_id": self.player_1})))
         self.unwrap(self.game.do(("mus", {"player_id": self.player_2})))
@@ -260,61 +260,64 @@ class TestTrading(unittest.TestCase, TestGame):
         self.assertTrue(all([old_card in new_player_cards[self.player_4]
              for old_card in [old_player_cards[self.player_4][i] for i in (1, 2, 3)]]))
 
-# class TestTwoPlayerHandiak(unittest.TestCase):
-#     own_name = "Haundia"
-#     next_name = "Tipia"
+class TestHandia(unittest.TestCase, TestGame):
+    def setUp(self):
+        self.game = Game()
 
-#     def setUp(self):
-#         self.game = Game(0)
-#         self.christophe = 1
-#         self.gerard = 2
-#         self.game.do("add_player", 1, "Christophe", "0")
-#         self.game.do("add_player", 2, "Gerard", "1")
-#         self.game.do("start", self.christophe)
-#         self.game.do("mintza", self.christophe)
+        (self.player_1, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (self.player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        (self.player_3, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (self.player_4, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        self.unwrap(self.game.do(("start_game", {"player_id": self.player_1})))
+        _, state = self.unwrap(self.game.do(("mintza", {"player_id": self.player_1})))
+        self.assertEqual(state["current_state"], "Haundia")
 
-#     def test_init_handiak(self):
-#         self.assertEqual(self.game.current, self.own_name)
-#         self.assertEqual(self.game.players.echku, self.game.players[self.christophe])
+    def test_all_paso(self):
+        self.unwrap(self.game.do(("paso", {"player_id": self.player_1})))
+        self.unwrap(self.game.do(("paso", {"player_id": self.player_2})))
+        self.unwrap(self.game.do(("paso", {"player_id": self.player_3})))
+        _, state = self.unwrap(self.game.do(("paso", {"player_id": self.player_4})))
 
-#     def test_paso_paso(self):
-#         self.game.do("paso", self.christophe)
-#         self.game.do("paso", self.gerard)
-#         self.assertEqual(self.game.current, self.next_name)
+        self.assertEqual(state["current_state"], "Tipia")
 
-#     def test_paso_imido_idoki(self):
-#         self.game.do("paso", self.christophe)
-#         self.game.do("imido", self.gerard)
-#         self.game.do("idoki", self.christophe)
-#         self.assertTrue(self.game.states[self.own_name].deffered)
-#         self.assertEqual(self.game.states[self.own_name].bet, 2)
-#         self.assertEqual(self.game.current, self.next_name)
+    # def test_paso_paso(self):
+    #     self.game.do("paso", self.christophe)
+    #     self.game.do("paso", self.gerard)
+    #     self.assertEqual(self.game.current, self.next_name)
 
-#     def test_imido_bi_hiru_idoki(self):
-#         self.game.do("imido", self.christophe)
-#         self.game.do("gehiago", self.gerard, "2")
-#         self.game.do("gehiago", self.christophe, "3")
-#         self.game.do("idoki", self.gerard)
-#         self.assertTrue(self.game.states[self.own_name].deffered)
-#         self.assertEqual(self.game.states[self.own_name].bet, 7)
-#         self.assertEqual(self.game.current, self.next_name)
+    # def test_paso_imido_idoki(self):
+    #     self.game.do("paso", self.christophe)
+    #     self.game.do("imido", self.gerard)
+    #     self.game.do("idoki", self.christophe)
+    #     self.assertTrue(self.game.states[self.own_name].deffered)
+    #     self.assertEqual(self.game.states[self.own_name].bet, 2)
+    #     self.assertEqual(self.game.current, self.next_name)
 
-#     def test_paso_imido_tira(self):
-#         self.game.do("paso", self.christophe)
-#         self.game.do("imido", self.gerard)
-#         self.game.do("tira", self.christophe)
-#         self.assertFalse(self.game.states[self.own_name].deffered)
-#         self.assertEqual(self.game.states[self.own_name].bet, 1)
-#         self.assertEqual(self.game.players[self.gerard].team.score, 1)
-#         self.assertEqual(self.game.current, self.next_name)
+    # def test_imido_bi_hiru_idoki(self):
+    #     self.game.do("imido", self.christophe)
+    #     self.game.do("gehiago", self.gerard, "2")
+    #     self.game.do("gehiago", self.christophe, "3")
+    #     self.game.do("idoki", self.gerard)
+    #     self.assertTrue(self.game.states[self.own_name].deffered)
+    #     self.assertEqual(self.game.states[self.own_name].bet, 7)
+    #     self.assertEqual(self.game.current, self.next_name)
 
-#     def test_imdido_lau_tira(self):
-#         self.game.do("imido", self.christophe)
-#         self.game.do("gehiago", self.gerard, "4")
-#         self.game.do("tira", self.christophe)
-#         self.assertEqual(self.game.states[self.own_name].bet, 2)
-#         self.assertEqual(self.game.players[self.gerard].team.score, 2)
-#         self.assertEqual(self.game.current, self.next_name)
+    # def test_paso_imido_tira(self):
+    #     self.game.do("paso", self.christophe)
+    #     self.game.do("imido", self.gerard)
+    #     self.game.do("tira", self.christophe)
+    #     self.assertFalse(self.game.states[self.own_name].deffered)
+    #     self.assertEqual(self.game.states[self.own_name].bet, 1)
+    #     self.assertEqual(self.game.players[self.gerard].team.score, 1)
+    #     self.assertEqual(self.game.current, self.next_name)
+
+    # def test_imdido_lau_tira(self):
+    #     self.game.do("imido", self.christophe)
+    #     self.game.do("gehiago", self.gerard, "4")
+    #     self.game.do("tira", self.christophe)
+    #     self.assertEqual(self.game.states[self.own_name].bet, 2)
+    #     self.assertEqual(self.game.players[self.gerard].team.score, 2)
+    #     self.assertEqual(self.game.current, self.next_name)
 
 
 # class TestTwoPlayerTipia(TestTwoPlayerHandiak):
