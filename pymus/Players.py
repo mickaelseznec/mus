@@ -38,22 +38,15 @@ class Team(UserList):
     def __init__(self, team_id):
         self.team_id = team_id
         self.data = []
-
-        self.begin_score = 0
         self.score = 0
-
-    def add_score(self, score):
-        self.score += score
-        if self.score >= Game.score_max:
-            self.score = Game.score_max
-            raise TeamWonException
 
 
 class PlayerManager:
-    def __init__(self):
+    def __init__(self, max_score=40):
         self.teams = (Team(0), Team(1))
         self.echku_order = deque()
         self._id_counter = 0
+        self.max_score = max_score
 
     @staticmethod
     def get_opposite_team_id(team_id):
@@ -69,6 +62,9 @@ class PlayerManager:
 
     def get_all_players_echku_ordered(self):
         return tuple(self.echku_order)
+
+    def get_team_players(self, team_id):
+        return [player for player in self.get_all_players_team_ordered() if player.team_id == team_id]
 
     def get_player_by_id(self, player_id):
         for player in self.get_all_players_team_ordered():
@@ -109,25 +105,27 @@ class PlayerManager:
     def step_echku_order(self):
         self.echku_order.rotate()
 
-    def has_finished(self):
-        return any(team.score >= Game.score_max for team in self.teams)
-
-    def winner_team(self):
-        for i, team in enumerate(self.teams):
-            if team.score >= Game.score_max:
-                return i
-
-    def authorise_player(self, speaking_player):
+    def set_authorised_player(self, speaking_player):
         for player in self.get_all_players_echku_ordered():
             player.can_speak = player == speaking_player
 
-    def set_team_authorisation(self, team_id):
+    def set_authorised_team(self, team_id):
         for player in self.get_all_players_team_ordered():
             player.can_speak = (player.team_id == team_id)
 
-    def authorise_next_team(self, team_id):
+    def authorise_opposite_team(self, team_id):
         next_team_id = PlayerManager.get_opposite_team_id(team_id)
-        self.set_team_authorisation(next_team_id)
+        self.set_authorised_team(next_team_id)
+
+    def add_points(self, points, team_id):
+        self.teams[team_id].score += points
+
+        if self.teams[team_id].score >= self.max_score:
+            self.teams[team_id].score = self.max_score
+            raise TeamWonException
+
+    def is_finished(self):
+        return any(team.score >= self.max_score for team in self.teams)
 
     def _create_new_player(self):
         player_id = uuid.uuid4().hex
@@ -145,6 +143,3 @@ class PlayerManager:
     def _attach_player(self, player, team_id):
         self.teams[team_id].append(player)
         player.team_reference = self.teams[team_id]
-
-
-

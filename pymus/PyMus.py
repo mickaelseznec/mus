@@ -12,11 +12,11 @@ from Players import Team, PlayerManager
 from MusExceptions import *
 
 class Game:
-    score_max = 40
+    max_score = 40
     bet_states = ["Haundia", "Tipia", "Pariak", "Jokua"]
 
     def __init__(self):
-        self.player_manager = PlayerManager()
+        self.player_manager = PlayerManager(Game.max_score)
         self.packet = Packet()
         self.visited_states = set()
         self._current_state = "Waiting Room"
@@ -57,7 +57,7 @@ class Game:
             data["players"].append({
                 "player_id": player.public_id,
                 "team_id" : player.team_id + 1,
-                "can_speak": player.can_speak,
+                "can_speak": self.states[self.current_state].is_player_authorised(player.player_id),
             })
 
         for team in self.player_manager.teams:

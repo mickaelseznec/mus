@@ -43,8 +43,8 @@ class GameState(ABC):
 
     #Final
     def on_entry(self):
-        self.reset_attributes()
         self.set_attending()
+        self.reset_attributes()
         self.initialize_authorizations()
 
     @abstractmethod
@@ -56,7 +56,7 @@ class GameState(ABC):
                           if self.attendees[player.player_id])
         if len(candidates) != 0:
             self.current_player = candidates[0]
-            self.player_manager.authorise_player(self.current_player)
+            self.player_manager.set_authorised_player(self.current_player)
 
     def authorise_next_player(self):
         candidates = list(player for player in self.player_manager.get_all_players_echku_ordered()
@@ -64,7 +64,7 @@ class GameState(ABC):
 
         current_index = candidates.index(self.current_player)
         self.current_player = candidates[(current_index + 1) % len(candidates)]
-        self.player_manager.authorise_player(self.current_player)
+        self.player_manager.set_authorised_player(self.current_player)
 
     def reset_attributes(self):
         ...
@@ -153,7 +153,7 @@ class Speaking(GameState):
         first_players_team = self.player_manager.get_all_players_echku_ordered()[0].team_id
         opposite_team = PlayerManager.get_opposite_team_id(first_players_team)
 
-        self.player_manager.set_team_authorisation(first_players_team)
+        self.player_manager.set_authorised_team(first_players_team)
 
     def public_representation(self):
         return {"team_status": self.team_status}
@@ -165,7 +165,7 @@ class Speaking(GameState):
         if all(value == "mus" for value in self.team_status.values()):
             self.game.current_state = "Trading"
 
-        self.player_manager.authorise_next_team(player.team_id)
+        self.player_manager.authorise_opposite_team(player.team_id)
 
     def handle_mintza(self, player_id):
         self.game.current_state = "Haundia"
@@ -187,14 +187,14 @@ class Trading(GameState):
         self.player_status = {
             player.player_id: {"waiting_confirmation": True,
                                "asks": set()}
-            for player in self.player_manager.get_all_players_team_ordered()
+            for player in self.player_manager.get_all_players_echku_ordered()
         }
 
     def is_player_authorised(self, player_id):
         return True
 
     def on_exit(self):
-        for player in self.player_manager.get_all_players_team_ordered():
+        for player in self.player_manager.get_all_players_echku_ordered():
             player.exchange_cards(self.player_status[player.player_id]["asks"], self.packet)
 
     def public_representation(self):
@@ -237,262 +237,243 @@ class Trading(GameState):
                 raise ForbiddenActionException("Invalid card_index %d" % index)
 
 
-class BetState(GameState):
-    own_state = ""
-    next_state = ""
-    has_bonus = False
-    HandType = Hand
-
+# ABC for Haundia, Tipia, Pariak, Jokua
+class BetState(GameState, ABC):
     def __init__(self, game):
         super().__init__(game)
         self.handle_map = {
             "paso": self.handle_paso,
             "gehiago": self.handle_gehiago,
-            "idoki": self.handle_idoki,
+            "iduki": self.handle_iduki,
             "tira": self.handle_tira,
             "hordago": self.handle_hordago,
             "kanta": self.handle_kanta,
+            "imido": self.handle_imido,
+            "confirm": self.handle_confirm,
         }
 
     def available_actions(self):
+        if self.is_skipped():
+            return ["confirm"]
         if self.under_hordago:
             return ["kanta", "tira"]
 
         actions = ["gehiago", "hordago"]
-        if not self.engaged:
+        if self.no_bid:
             actions += ["paso", "imido"]
         else:
-            actions += ["tira", "idoki"]
+            actions += ["tira", "iduki"]
 
         return actions
 
     def reset_attributes(self):
-        self.player_status = {player.player_id: {"is_paso": False}
+        self.player_status = {player.player_id: {"waiting_confirmation": True, "is_paso": False}
                               for player in self.player_manager.get_all_players_echku_ordered()}
         self.winner = None
-        self.bid = 1
-        self.bid_accepted = True
-        self.engaged = False
-        self.under_hordago = False
-        self.proposal = 0
+        if all(not attending for attending in self.attendees.values()):
+            self.bid = 1
+        else:
+            self.bid = 0
+        self.offer = 0
         self.bonus = 0
+        self.was_engaged = False
+        self.differed_bid = False
+        self.no_bid = True
+        self.under_hordago = False
 
     def public_representation(self):
+        representation =  {"Bid": self.bid, "Offer": self.offer, "BidDiffered": self.differed_bid,
+                           "UnderHordago": self.under_hordago, "IsSkipped": self.is_skipped()}
+
+        bai_or_ez = self.player_has_it()
+        if bai_or_ez :
+            representation["PlayerHasIt"] = bai_or_ez
+
+        return representation
+
+    def player_has_it(self):
+        return {}
+
+    def is_player_authorised(self, player_id):
+        if self.is_skipped():
+            return self.player_status[player_id]["waiting_confirmation"]
+        else:
+            return super().is_player_authorised(player_id)
+
+    def is_skipped(self):
+        team_0_plays = any(self.attendees[player.player_id]
+                           for player in self.player_manager.get_team_players(0))
+        team_1_plays = any(self.attendees[player.player_id]
+                           for player in self.player_manager.get_team_players(1))
+        return (not team_0_plays) or (not team_1_plays)
+
+    def distribute_bid_points(self):
+        team_id = self.get_winner_team()
+        self.player_manager.add_points(self.bid, team_id)
+
+    def distribute_bonus_points(self):
         ...
 
-    def compute_winner(self):
-        if not self.bid_accepted:
-            return
-        echku_order = self.player_manager.get_all_echku_sorted()
-        for i in range(len(echku_order)):
-            for j in range(i, len(echku_order)):
-                hand_1 = self.HandType(echku_order[i].cards)
-                hand_2 = self.HandType(echku_order[j].cards)
-                if hand_1 < hand_2:
-                    echku_order[i], echku_order[j] = echku_order[j], echku_order[i]
-        self.winner = echku_order[0].team
+    def get_winner_team(self):
+        players = self.player_manager.get_all_players_echku_ordered()
+
+        cards_order_tuple = tuple(
+            (self.get_hand_type()(player.get_cards()), index) for (index, player) in enumerate(players)
+        )
+
+        winner = players[max(cards_order_tuple)[1]]
+        return winner.team_id
 
     def compute_bonus(self):
-        if self.has_bonus and self.engaged:
+        if self.has_bonus and not self.no_bid:
             for player in self.player_manager:
                 if player.team == self.winner:
                     self.bonus += self.HandType(player.cards).bonus()
 
-    def everybody_is_paso(self):
-        attendees = [player_id for (player_id, attends) in self.attendees.items() if attends]
-        return all(self.player_status[attendee]["is_paso"] for attendee in attendees)
-
     def handle_paso(self, player_id):
         self.player_status[player_id]["is_paso"] = True
         self.authorise_next_player()
-        if self.everybody_is_paso():
-            self.bid_accepted = True
-            self.game.current_state = self.next_state
+        if self._everybody_is_paso():
+            self.differed_bid = True
+            self.game.current_state = self.get_next_state()
 
-    def handle_gehiago(self, player_id, proposal):
-        if not self.engaged:
-            proposal -= 1
-            self.engaged = True
+    def handle_gehiago(self, player_id, offer):
+        player = self.player_manager.get_player_by_id(player_id)
+        self.engaged = True
 
-        if proposal <= 0:
+        if self.no_bid:
+            offer -= 1
+            self.no_bid = False
+
+        if offer <= 0:
             raise ForbiddenActionException
 
-        self.bid += self.proposal
-        self.proposal = proposal
-        self.authorise_opposite_team(player_id)
+        self.bid += self.offer
+        self.offer = offer
+        self.player_manager.authorise_opposite_team(player.team_id)
+
+    def handle_imido(self, player_id):
+        return self.handle_gehiago(player_id, 2)
 
     def handle_tira(self, player_id):
-        self.bid_accepted = False
         self.winner = PlayerManager.get_opposite_team_id(self.player_manager[player_id].team_id)
         try:
             self.player_manager.other_team(self.player_manager[player_id].team).add_score(self.bid)
         except TeamWonException:
             self.game.current_state = "Finished"
         else:
-            self.game.current_state = self.next_state
+            self.game.current_state = self.get_next_state()
 
-    def handle_idoki(self, player_id):
-        self.bid += self.proposal
-        self.game.current_state = self.next_state
+    def handle_iduki(self, player_id):
+        self.bid += self.offer
+        self.differed_bid = True
+        self.game.current_state = self.get_next_state()
 
     def handle_kanta(self, player_id):
         self.game.current_state = "Finished"
 
     def handle_hordago(self, player_id):
+        self.engaged = True
         self.under_hordago = True
         self.handle_gehiago(self, player_id, Gmae.score_max)
 
+    def handle_confirm(self, player_id):
+        if not self.player_status[player_id]["waiting_confirmation"]:
+            raise ForbiddenActionException
+
+        self.player_status[player_id]["waiting_confirmation"] = False
+
+        if all(not player_status["waiting_confirmation"]
+               for player_status in self.player_status.values()):
+            self.game.current_state = self.get_next_state()
+
+    def _everybody_is_paso(self):
+        attendees = [player_id for (player_id, attends) in self.attendees.items() if attends]
+        return all(self.player_status[attendee]["is_paso"] for attendee in attendees)
+
+    @abstractmethod
+    def get_next_state(self):
+        ...
+
+    @abstractmethod
+    def get_hand_type(self):
+        ...
+
 
 class Haundia(BetState):
-    own_state = "Haundia"
-    next_state = "Tipia"
-    HandType = HaundiaHand
+    def get_next_state(self):
+        return "Tipia"
+
+    def get_hand_type(self):
+        return HaundiaHand
 
 
 class Tipia(BetState):
-    own_state = "Tipia"
-    next_state = "Pariak"
-    HandType = TipiaHand
+    def get_next_state(self):
+        return "Pariak"
+
+    def get_hand_type(self):
+        return TipiaHand
 
 
 class Pariak(BetState):
-    own_state = "Pariak"
-    next_state = "Jokua"
-    HandType = PariakHand
-    has_bonus = True
+    def set_attending(self):
+        self.attendees = {player.player_id: PariakHand(player.get_cards()).is_special for
+                          player in self.player_manager.get_all_players_echku_ordered()}
 
-    def __init__(self, game):
-        super().__init__(game)
-        self.no_bet = False
-        self.no_winner = False
+    def player_has_it(self):
+        return {player.public_id: PariakHand(player.get_cards()).is_special for
+                          player in self.player_manager.get_all_players_echku_ordered()}
 
-    def is_player_authorised(self, player_id):
-        if self.no_bet:
-            return True
-        return self.player_manager[player_id].has_hand and super().is_player_authorised(player_id)
+    def distribute_bonus_points(self):
+        if self.was_engaged:
+            winner_team = self.get_winner_team()
+            total_bonus = 0
+            for player in self.player_manager.get_team_players(winner_team):
+                total_bonus += PariakHand(player.get_cards())
+            self.player_manager.add_points(total_bonus, winner_team)
 
-    def possible_actions(self):
-        if self.no_bet:
-            return ['ok']
-        return super().possible_actions()
+    def get_next_state(self):
+        return "Jokua"
 
-    def authorise_next_player(self):
-        self.player_manager.authorise_next_player()
-        while not self.player_manager.authorised_player.has_hand:
-            self.player_manager.authorise_next_player()
-
-    def handle(self, action, player_id, *args):
-        if action == 'ok':
-            if not self.player_manager[player_id].waiting_confirmation:
-                raise ForbiddenActionException
-            self.player_manager[player_id].waiting_confirmation = False
-
-            if all(not player.waiting_confirmation for player in self.player_manager):
-                return self.next_state
-            else:
-                return self.own_state
-
-        return super().handle(action, player_id, *args)
-
-    def compute_winner(self):
-        if not self.no_winner:
-            super().compute_winner()
-
-    def on_entry(self):
-        super().on_entry()
-        self.no_bet = False
-        self.no_winner = False
-        self.bid = 1
-        for player in self.player_manager:
-            player.has_hand = PariakHand(player.cards).is_special
-        if all(not player.has_hand for player in self.player_manager):
-            self.no_winner = True
-            self.no_bet = True
-            self.bid_accepted = False
-            self.bid = 0
-
-        elif not (any(player.has_hand for player in self.player_manager.get_team(0)) and
-                  any(player.has_hand for player in self.player_manager.get_team(1))):
-            self.compute_winner()
-            self.no_bet = True
-            self.bid = 0
-            self.bid_accepted = False
-            self.engaged = True
-        else:
-            while not self.player_manager.authorised_player.has_hand:
-                self.player_manager.authorise_next_player()
-            self.first_player = self.player_manager.authorised_player
-
-        if self.no_bet:
-            for player in self.player_manager:
-                player.waiting_confirmation = True
+    def get_hand_type(self):
+        return PariakHand
 
 
 class Jokua(BetState):
-    own_state = "Jokua"
-    next_state = "Finished"
-    HandType = JokuaHand
-    has_bonus = True
-
-    def __init__(self, game):
-        super().__init__(game)
-        self.no_bet = False
-        self.false_game = False
-
-    def is_player_authorised(self, player_id):
-        if self.no_bet:
-            return True
-        if not self.false_game:
-            return self.player_manager[player_id].has_game and super().is_player_authorised(player_id)
-        return super().is_player_authorised(player_id)
-
-    def possible_actions(self):
-        if self.no_bet:
-            return ['ok']
-        return super().possible_actions()
-
-    def handle(self, action, player_id, *args):
-        if action == 'ok':
-            if not self.player_manager[player_id].waiting_confirmation:
-                raise ForbiddenActionException
-            self.player_manager[player_id].waiting_confirmation = False
-
-            if all(not player.waiting_confirmation for player in self.player_manager):
-                return self.next_state
-            else:
-                return self.own_state
-        return super().handle(action, player_id, *args)
-
-    def on_entry(self):
-        super().on_entry()
-        self.no_bet = False
-        self.false_game = False
-        for player in self.player_manager:
-            player.has_game = JokuaHand(player.cards).is_special
-        if any(player.has_game for player in self.player_manager):
-            if not (any(player.has_game for player in self.player_manager.get_team(0)) and
-                    any(player.has_game for player in self.player_manager.get_team(1))):
-                self.compute_winner()
-                self.no_bet = True
-                self.bid = 0
-                self.engaged = True
-                self.bid_accepted = False
-            else:
-                while not self.player_manager.authorised_player.has_game:
-                    self.player_manager.authorise_next_player()
-                self.first_player = self.player_manager.authorised_player
+    def set_attending(self):
+        if self._is_real_game():
+            self.attendees = {player.player_id: JokuaHand(player.get_cards()).is_special
+                              for player in self.player_manager.get_all_players_echku_ordered()}
         else:
-            self.false_game = True
+            self.attendees = {player.player_id: True
+                              for player in self.player_manager.get_all_players_echku_ordered()}
 
-        if self.no_bet:
-            for player in self.player_manager:
-                player.waiting_confirmation = True
+    def distribute_bonus_points(self):
+        if self.was_engaged:
+            winner_team = self.get_winner_team()
+            if self._is_real_game():
+                total_bonus = 0
+                for player in self.player_manager.get_team_players(winner_team):
+                    total_bonus += PariakHand(player.get_cards())
+                self.player_manager.add_points(total_bonus, winner_team)
+            else:
+                self.player_manager.add_points(1, winner_team)
 
-    def compute_bonus(self):
-        if self.false_game and self.engaged:
-            self.bonus = 1
-        else:
-            super().compute_bonus()
+    def player_has_it(self):
+        return {player.public_id: JokuaHand(player.get_cards()).is_special
+                for player in self.player_manager.get_all_players_echku_ordered()}
+
+    def get_next_state(self):
+        return "Finished"
+
+    def get_hand_type(self):
+        return JokuaHand
+
+    def _is_real_game(self):
+        return any(JokuaHand(player.get_cards()).is_special
+                   for player in self.player_manager.get_all_players_echku_ordered())
+
 
 class Finished(GameState):
     own_state = "Finished"
@@ -500,54 +481,47 @@ class Finished(GameState):
 
     def __init__(self, game):
         super().__init__(game)
-        self.actions = ["ok"]
+        self.handle_map = {
+            "confirm": self.handle_confirm,
+        }
 
     def available_actions(self):
-        ...
+        return ["confirm"]
 
     def public_representation(self):
         ...
 
+    def on_exit(self):
+        self.game.reset_packet()
+
+        for player in self.player_manager.get_all_players_echku_ordered():
+            player.draw_new_hand(self.packet)
+
+        self.player_manager.step_echku_order()
+
+        if self.player_manager.is_finished():
+            self.player_manager.reset_scores()
 
     def is_player_authorised(self, player_id):
         return True
 
     def on_entry(self):
-        self.reset_history()
-        if not self.player_manager.has_finished():
-            try:
-                for state in Game.bet_states:
-                    if self.game.states[state].winner is not None:
-                        if self.game.states[state].bid_accepted:
-                            self.player_manager.teams[self.game.states[state].winner.team_id].add_score(self.game.states[state].bid)
-                        self.player_manager.teams[self.game.states[state].winner.team_id].add_score(self.game.states[state].bonus)
-            except TeamWonException:
-                self.game.finished = True
+        if self.player_manager.is_finished():
+            return
 
-            for player in self.player_manager:
-                player.waiting_confirmation = True
+        for state in self.game.bet_states:
+            if self.game.states[state].differed_bid:
+                self.game.states[state].distribute_bid_points()
 
-    def handle(self, action, player_id, *args):
-        if not self.player_manager[player_id].waiting_confirmation:
+            if self.game.states[state].was_engaged:
+                self.game.states[state].distribute_bonus_points()
+
+    def handle_confirm(self, player_id):
+        if not self.player_status[player_id]["waiting_confirmation"]:
             raise ForbiddenActionException
 
-        self.player_manager[player_id].waiting_confirmation = False
+        self.player_status[player_id]["waiting_confirmation"] = False
 
-        if all(not player.waiting_confirmation for player in self.player_manager):
-            return self.next_state
-        else:
-            return self.own_state
-
-    def on_exit(self):
-        self.packet.restore()
-        for player in self.player_manager:
-            player.cards = sorted(self.packet.draw() for _ in range(4))
-        self.player_manager.get_all_echku_sorted()
-        if self.player_manager.has_finished():
-            for team in self.player_manager.teams:
-                team.score = 0
-        self.player_manager.set_echku()
-        self.reset_history()
-
-
-
+        if all(not player_status["waiting_confirmation"]
+               for player_status in self.player_status.values()):
+            self.game.current_state = self.get_next_state()

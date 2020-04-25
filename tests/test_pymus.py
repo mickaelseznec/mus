@@ -8,69 +8,6 @@ import unittest
 import PyMus as mus
 from PyMus import Game, Card, Team, PlayerManager
 
-class TestPlayerManager(unittest.TestCase):
-    def setUp(self):
-        self.player_manager = PlayerManager()
-
-    def test_add_one_player(self):
-        self.assertEqual(len(self.player_manager.teams[0]), 0)
-
-        player_id = self.player_manager.add_player(None, 0)
-
-        self.assertEqual(len(self.player_manager.teams[0]), 1)
-
-    def test_delete_player(self):
-        player_id = self.player_manager.add_player(None, 0)
-        self.assertEqual(len(self.player_manager.teams[0]), 1)
-
-        self.player_manager.remove_player(player_id[0])
-        self.assertEqual(len(self.player_manager.teams[0]), 0)
-
-    def test_many_players(self):
-        self.assertEqual(len(self.player_manager.teams[0]), 0)
-        self.assertEqual(len(self.player_manager.teams[1]), 0)
-
-        player_id_1 = self.player_manager.add_player(None, 0)
-        player_id_2 = self.player_manager.add_player(None, 0)
-        player_id_3 = self.player_manager.add_player(None, 1)
-        player_id_4 = self.player_manager.add_player(None, 1)
-
-        self.assertEqual(len(self.player_manager.teams[0]), 2)
-        self.assertEqual(len(self.player_manager.teams[1]), 2)
-
-        player_id_list = (player_id_1, player_id_2, player_id_3, player_id_4)
-        self.assertEqual(len(player_id_list), len(set(player_id_list)))
-
-    def test_cannot_exceed_two_per_team(self):
-        player_id_1 = self.player_manager.add_player(None, 0)
-        player_id_2 = self.player_manager.add_player(None, 0)
-
-        self.assertRaises(mus.ForbiddenActionException,
-                          self.player_manager.add_player, None, 0)
-
-        player_id_3 = self.player_manager.add_player(None, 1)
-        player_id_4 = self.player_manager.add_player(None, 1)
-
-        self.player_manager.add_player(player_id_1[0], 0)
-
-        self.assertRaises(mus.ForbiddenActionException,
-                          self.player_manager.add_player, player_id_1[0], 1)
-
-    def test_change_teams(self):
-        player_id_1 = self.player_manager.add_player(None, 0)
-        player_id_2 = self.player_manager.add_player(None, 0)
-
-        self.assertEqual(len(self.player_manager.teams[0]), 2)
-
-        player_id_1_save = player_id_1
-        player_id_1 = self.player_manager.add_player(player_id_1[0], 1)
-
-        self.assertEqual(player_id_1_save, player_id_1)
-
-        self.assertEqual(len(self.player_manager.teams[0]), 1)
-        self.assertEqual(len(self.player_manager.teams[1]), 1)
-
-
 class TestGame:
     def unwrap(self, game_answer):
         self.assertEqual(game_answer['status'], "OK")
@@ -81,6 +18,42 @@ class TestGame:
 
     def assertState(self, state):
         self.assertEqual(self.game.status()["current_state"], state)
+
+    def register_four_player(self):
+        player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        player_2, _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        player_3, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        player_4, _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+
+        self.player_1, self.player_1_public = player_1
+        self.player_2, self.player_2_public = player_2
+        self.player_3, self.player_3_public = player_3
+        self.player_4, self.player_4_public = player_4
+
+        self.public_to_private = {player[1]: player[0]
+                                  for player in (player_1, player_2, player_3, player_4)}
+
+    def player_speaking(self):
+        status = self.game.status()
+        for player in status["players"]:
+            if player["can_speak"]:
+                return self.public_to_private[player["player_id"]]
+        return None
+
+    def go_through_speaking(self):
+        self.unwrap(self.game.do(("mintza", {"player_id": self.player_speaking()})))
+
+    def go_through_betstate(self):
+        status = self.game.status()
+        # from pprint import pprint;
+        # pprint(status)
+        # import ipdb; ipdb.set_trace()
+        if status[status["current_state"]].get("IsSkipped", False):
+            for player in (self.player_1, self.player_2, self.player_3, self.player_4):
+                self.unwrap(self.game.do(("confirm", {"player_id": player})))
+        else:
+            self.unwrap(self.game.do(("imido", {"player_id": self.player_speaking()})))
+            self.unwrap(self.game.do(("iduki", {"player_id": self.player_speaking()})))
 
 
 class TestWaitingRoom(unittest.TestCase, TestGame):
@@ -140,15 +113,7 @@ class TestSpeaking(unittest.TestCase, TestGame):
 
     def setUp(self):
         self.game = Game()
-
-        (self.player_1, self.player_1_public), _ = self.unwrap(self.game.do((
-            "add_player", {"team_id": 1})))
-        (self.player_2, self.player_2_public), _ = self.unwrap(self.game.do((
-            "add_player", {"team_id": 2})))
-        (self.player_3, self.player_3_public), _ = self.unwrap(self.game.do((
-            "add_player", {"team_id": 1})))
-        (self.player_4, self.player_4_public), _ = self.unwrap(self.game.do((
-            "add_player", {"team_id": 2})))
+        self.register_four_player()
         self.unwrap(self.game.do(("start_game", {"player_id": self.player_1})))
         self.assertState("Speaking")
 
@@ -178,12 +143,8 @@ class TestTrading(unittest.TestCase, TestGame):
     def setUp(self):
         self.game = Game()
 
-        (self.player_1, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        (self.player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
-        (self.player_3, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        (self.player_4, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        self.register_four_player()
         self.unwrap(self.game.do(("start_game", {"player_id": self.player_1})))
-
         self.unwrap(self.game.do(("mus", {"player_id": self.player_1})))
         self.unwrap(self.game.do(("mus", {"player_id": self.player_2})))
         self.assertState("Trading")
@@ -263,14 +224,9 @@ class TestTrading(unittest.TestCase, TestGame):
 class TestHandia(unittest.TestCase, TestGame):
     def setUp(self):
         self.game = Game()
-
-        (self.player_1, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        (self.player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
-        (self.player_3, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        (self.player_4, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 2})))
+        self.register_four_player()
         self.unwrap(self.game.do(("start_game", {"player_id": self.player_1})))
-        _, state = self.unwrap(self.game.do(("mintza", {"player_id": self.player_1})))
-        self.assertEqual(state["current_state"], "Haundia")
+        self.go_through_speaking()
 
     def test_all_paso(self):
         self.unwrap(self.game.do(("paso", {"player_id": self.player_1})))
@@ -280,24 +236,48 @@ class TestHandia(unittest.TestCase, TestGame):
 
         self.assertEqual(state["current_state"], "Tipia")
 
-    # def test_paso_paso(self):
-    #     self.game.do("paso", self.christophe)
-    #     self.game.do("paso", self.gerard)
-    #     self.assertEqual(self.game.current, self.next_name)
+    def test_paso_imido_iduki(self):
+        self.unwrap(self.game.do(("paso", {"player_id": self.player_1})))
+        self.unwrap(self.game.do(("paso", {"player_id": self.player_2})))
+        self.unwrap(self.game.do(("imido", {"player_id": self.player_3})))
+        _, state = self.unwrap(self.game.do(("iduki", {"player_id": self.player_4})))
 
-    # def test_paso_imido_idoki(self):
-    #     self.game.do("paso", self.christophe)
-    #     self.game.do("imido", self.gerard)
-    #     self.game.do("idoki", self.christophe)
-    #     self.assertTrue(self.game.states[self.own_name].deffered)
-    #     self.assertEqual(self.game.states[self.own_name].bet, 2)
-    #     self.assertEqual(self.game.current, self.next_name)
+        self.assertEqual(state["current_state"], "Tipia")
 
-    # def test_imido_bi_hiru_idoki(self):
+class TestTipia(unittest.TestCase, TestGame):
+    def setUp(self):
+        self.game = Game()
+
+        self.register_four_player()
+        self.unwrap(self.game.do(("start_game", {"player_id": self.player_1})))
+        self.go_through_speaking()
+        self.go_through_betstate()
+
+    def test_paso_imido_iduki(self):
+        self.unwrap(self.game.do(("imido", {"player_id": self.player_1})))
+        _, state = self.unwrap(self.game.do(("iduki", {"player_id": self.player_2})))
+
+        self.assertEqual(state["current_state"], "Pariak")
+
+class TestPariak(unittest.TestCase, TestGame):
+    def setUp(self):
+        self.game = Game()
+
+        self.register_four_player()
+        self.unwrap(self.game.do(("start_game", {"player_id": self.player_1})))
+        self.go_through_speaking()
+        self.go_through_betstate()
+        self.go_through_betstate()
+
+    def test_paso_imido_iduki(self):
+        ...
+
+
+    # def test_imido_bi_hiru_iduki(self):
     #     self.game.do("imido", self.christophe)
     #     self.game.do("gehiago", self.gerard, "2")
     #     self.game.do("gehiago", self.christophe, "3")
-    #     self.game.do("idoki", self.gerard)
+    #     self.game.do("iduki", self.gerard)
     #     self.assertTrue(self.game.states[self.own_name].deffered)
     #     self.assertEqual(self.game.states[self.own_name].bet, 7)
     #     self.assertEqual(self.game.current, self.next_name)
@@ -414,6 +394,21 @@ class TestHandia(unittest.TestCase, TestGame):
 #         self.game.do("paso", self.christophe)
 #         self.game.do("paso", self.gerard)
 
+
+class TestJokua(unittest.TestCase, TestGame):
+    def setUp(self):
+        self.game = Game()
+
+        self.register_four_player()
+        self.unwrap(self.game.do(("start_game", {"player_id": self.player_1})))
+        self.go_through_speaking()
+        self.go_through_betstate()
+        self.go_through_betstate()
+        self.go_through_betstate()
+
+    def test_paso_imido_iduki(self):
+        self.go_through_betstate()
+        ...
 
 # class TestTwoPlayerJokua(unittest.TestCase):
 #     def setUp(self):
