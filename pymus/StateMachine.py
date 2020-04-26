@@ -321,7 +321,7 @@ class BetState(GameState, ABC):
         players = self.player_manager.get_all_players_echku_ordered()
 
         cards_order_tuple = tuple(
-            (self.get_hand_type()(player.get_cards()), index) for (index, player) in enumerate(players)
+            (self.get_hand_type()(player.get_cards()), -index) for (index, player) in enumerate(players)
         )
 
         winner = players[max(cards_order_tuple)[1]]
@@ -368,8 +368,12 @@ class BetState(GameState, ABC):
         return self.handle_gehiago(player_id, 2)
 
     def handle_tira(self, player_id):
-        self.set_winner_team(PlayerManager.get_opposite_team_id(self.player_manager[player_id].team_id))
-        self.player_manager.other_team(self.player_manager[player_id].team).add_score(self.bid)
+        self.offer = 0
+        winner_team = PlayerManager.get_opposite_team_id(
+            self.player_manager.get_player_by_id(player_id).team_id)
+
+        self.set_winner_team(winner_team)
+        self.distribute_bid_points()
         self.game.current_state = self.get_next_state()
 
     def handle_iduki(self, player_id):
