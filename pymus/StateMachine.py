@@ -120,10 +120,8 @@ class WaitingRoom(GameState):
         return True
 
     def handle_add_player(self, team_id, player_id=None):
-        if team_id != 1 and team_id != 2:
+        if team_id != 0 and team_id != 1:
             raise ForbiddenActionException("Invalid team team_id %d" % team_id)
-        # 0-indexing FTW
-        team_id -= 1
 
         return self.player_manager.add_player(player_id, team_id)
 
@@ -208,15 +206,10 @@ class Trading(GameState):
         for index in indices:
             self._validate_card_index(index)
 
-        # 0-indexing FTW
-        zero_indexed_indices = (index - 1 for index in indices)
-        self.player_status[player_id]["asks"] = set(zero_indexed_indices)
+        self.player_status[player_id]["asks"] = set(indices)
 
     def handle_toggle(self, player_id, index):
         self._validate_card_index(index)
-
-        # 0-indexing FTW
-        index = index - 1
 
         if index not in self.player_status[player_id]["asks"]:
             self.player_status[player_id]["asks"].add(index)
@@ -233,7 +226,7 @@ class Trading(GameState):
             self.game.current_state = "Speaking"
 
     def _validate_card_index(self, index):
-        if not 1<= index <= 4:
+        if not 0 <= index <= 3:
                 raise ForbiddenActionException("Invalid card_index %d" % index)
 
 
@@ -270,26 +263,36 @@ class BetState(GameState, ABC):
         self.player_status = {player.player_id: {"waiting_confirmation": True, "is_paso": False}
                               for player in self.player_manager.get_all_players_echku_ordered()}
         self.winner = None
-        if all(not attending for attending in self.attendees.values()):
+        if self.is_skipped():
             self.bid = 0
+            if any(attends for attends in self.attendees.values()):
+                self.compute_winner_team()
         else:
             self.bid = 1
         self.offer = 0
-        self.bonus = 0
+        self.bonus_points = {}
         self.was_engaged = False
         self.differed_bid = False
         self.no_bid = True
         self.under_hordago = False
+        self._winner_team = None
 
     def public_representation(self):
         representation =  {"Bid": self.bid, "Offer": self.offer, "BidDiffered": self.differed_bid,
-                           "UnderHordago": self.under_hordago, "IsSkipped": self.is_skipped()}
+                           "UnderHordago": self.under_hordago, "IsSkipped": self.is_skipped(),
+                           "Winner": self.get_winner_team(),
+                           "Bonus": self.get_bonus_representation()}
 
         bai_or_ez = self.player_has_it()
         if bai_or_ez :
             representation["PlayerHasIt"] = bai_or_ez
 
         return representation
+
+    def get_bonus_representation(self):
+        if self.bonus_points:
+            return {player.public_id: bonus for player, bonus in self.bonus_points.items()}
+        return None
 
     def player_has_it(self):
         return {}
@@ -314,7 +317,7 @@ class BetState(GameState, ABC):
     def distribute_bonus_points(self):
         ...
 
-    def get_winner_team(self):
+    def compute_winner_team(self):
         players = self.player_manager.get_all_players_echku_ordered()
 
         cards_order_tuple = tuple(
@@ -322,13 +325,22 @@ class BetState(GameState, ABC):
         )
 
         winner = players[max(cards_order_tuple)[1]]
-        return winner.team_id
 
-    def compute_bonus(self):
-        if self.has_bonus and not self.no_bid:
-            for player in self.player_manager:
-                if player.team == self.winner:
-                    self.bonus += self.HandType(player.cards).bonus()
+        self.set_winner_team(winner.team_id)
+
+    def set_winner_team(self, team_id):
+        self._winner_team = team_id
+
+    def get_winner_team(self):
+        return self._winner_team
+
+    def compute_bonus_points(self):
+        ...
+
+    def distribute_bonus_points(self):
+        winner_team = self.get_winner_team()
+        for bonus in self.bonus_points.values():
+            self.player_manager.add_points(bonus, winner_team)
 
     def handle_paso(self, player_id):
         self.player_status[player_id]["is_paso"] = True
@@ -356,12 +368,13 @@ class BetState(GameState, ABC):
         return self.handle_gehiago(player_id, 2)
 
     def handle_tira(self, player_id):
-        self.winner = PlayerManager.get_opposite_team_id(self.player_manager[player_id].team_id)
+        self.set_winner_team(PlayerManager.get_opposite_team_id(self.player_manager[player_id].team_id))
         self.player_manager.other_team(self.player_manager[player_id].team).add_score(self.bid)
         self.game.current_state = self.get_next_state()
 
     def handle_iduki(self, player_id):
         self.bid += self.offer
+        self.offer = 0
         self.differed_bid = True
         self.game.current_state = self.get_next_state()
 
@@ -421,13 +434,11 @@ class Pariak(BetState):
         return {player.public_id: PariakHand(player.get_cards()).is_special for
                           player in self.player_manager.get_all_players_echku_ordered()}
 
-    def distribute_bonus_points(self):
-        if self.was_engaged:
+    def compute_bonus_points(self):
+        if self.is_skipped() or self.was_engaged:
             winner_team = self.get_winner_team()
-            total_bonus = 0
-            for player in self.player_manager.get_team_players(winner_team):
-                total_bonus += PariakHand(player.get_cards())
-            self.player_manager.add_points(total_bonus, winner_team)
+            self.bonus_points = {player: PariakHand(player.get_cards()).bonus
+                                 for player in self.player_manager.get_team_players(winner_team)}
 
     def get_next_state(self):
         return "Jokua"
@@ -445,16 +456,11 @@ class Jokua(BetState):
             self.attendees = {player.player_id: True
                               for player in self.player_manager.get_all_players_echku_ordered()}
 
-    def distribute_bonus_points(self):
-        if self.was_engaged:
+    def compute_bonus_points(self):
+        if self.is_skipped() or self.was_engaged:
             winner_team = self.get_winner_team()
-            if self._is_real_game():
-                total_bonus = 0
-                for player in self.player_manager.get_team_players(winner_team):
-                    total_bonus += PariakHand(player.get_cards())
-                self.player_manager.add_points(total_bonus, winner_team)
-            else:
-                self.player_manager.add_points(1, winner_team)
+            self.bonus_points = {player: JokuaHand(player.get_cards()).bonus
+                                 for player in self.player_manager.get_team_players(winner_team)}
 
     def player_has_it(self):
         return {player.public_id: JokuaHand(player.get_cards()).is_special
@@ -482,7 +488,9 @@ class Finished(GameState):
         return ["confirm"]
 
     def public_representation(self):
-        ...
+        return {"RevealCards":
+                {player.public_id: [json.dumps(card, cls=JSONCardEncoder) for card in player.get_cards()]
+                 for player in self.player_manager.get_all_players_echku_ordered()}}
 
     def on_exit(self):
         self.game.reset_packet()
@@ -516,10 +524,12 @@ class Finished(GameState):
         try:
             for state in self.game.bet_states:
                 if self.game.states[state].differed_bid:
+                    self.game.states[state].compute_winner_team()
                     self.game.states[state].distribute_bid_points()
 
-                if self.game.states[state].was_engaged:
-                    self.game.states[state].distribute_bonus_points()
+                self.game.states[state].compute_bonus_points()
+                self.game.states[state].distribute_bonus_points()
+
         except TeamWonException:
             ...
 

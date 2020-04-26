@@ -61,13 +61,13 @@ class Game:
         for player in self.player_manager.get_all_players_team_ordered():
             data["players"].append({
                 "player_id": player.public_id,
-                "team_id" : player.team_id + 1,
+                "team_id" : player.team_id,
                 "can_speak": self.states[self.current_state].is_player_authorised(player.player_id),
             })
 
         for team in self.player_manager.teams:
             data["teams"].append({
-                "team_id": team.team_id + 1,
+                "team_id": team.team_id,
                 "players": [player.public_id for player in team],
                 "score": team.score,
                 "games": team.games,
