@@ -271,9 +271,9 @@ class BetState(GameState, ABC):
                               for player in self.player_manager.get_all_players_echku_ordered()}
         self.winner = None
         if all(not attending for attending in self.attendees.values()):
-            self.bid = 1
-        else:
             self.bid = 0
+        else:
+            self.bid = 1
         self.offer = 0
         self.bonus = 0
         self.was_engaged = False
@@ -357,12 +357,8 @@ class BetState(GameState, ABC):
 
     def handle_tira(self, player_id):
         self.winner = PlayerManager.get_opposite_team_id(self.player_manager[player_id].team_id)
-        try:
-            self.player_manager.other_team(self.player_manager[player_id].team).add_score(self.bid)
-        except TeamWonException:
-            self.game.current_state = "Finished"
-        else:
-            self.game.current_state = self.get_next_state()
+        self.player_manager.other_team(self.player_manager[player_id].team).add_score(self.bid)
+        self.game.current_state = self.get_next_state()
 
     def handle_iduki(self, player_id):
         self.bid += self.offer
@@ -476,9 +472,6 @@ class Jokua(BetState):
 
 
 class Finished(GameState):
-    own_state = "Finished"
-    next_state = "Speaking"
-
     def __init__(self, game):
         super().__init__(game)
         self.handle_map = {
@@ -494,6 +487,11 @@ class Finished(GameState):
     def on_exit(self):
         self.game.reset_packet()
 
+        if self.player_manager.is_finished():
+            self.game.turn_number = 1
+        else:
+            self.game.turn_number += 1
+
         for player in self.player_manager.get_all_players_echku_ordered():
             player.draw_new_hand(self.packet)
 
@@ -505,16 +503,25 @@ class Finished(GameState):
     def is_player_authorised(self, player_id):
         return True
 
+    def reset_attributes(self):
+        self.player_status = {player.player_id: {"waiting_confirmation": True}
+                              for player in self.player_manager.get_all_players_echku_ordered()}
+
     def on_entry(self):
+        super().on_entry()
+
         if self.player_manager.is_finished():
             return
 
-        for state in self.game.bet_states:
-            if self.game.states[state].differed_bid:
-                self.game.states[state].distribute_bid_points()
+        try:
+            for state in self.game.bet_states:
+                if self.game.states[state].differed_bid:
+                    self.game.states[state].distribute_bid_points()
 
-            if self.game.states[state].was_engaged:
-                self.game.states[state].distribute_bonus_points()
+                if self.game.states[state].was_engaged:
+                    self.game.states[state].distribute_bonus_points()
+        except TeamWonException:
+            ...
 
     def handle_confirm(self, player_id):
         if not self.player_status[player_id]["waiting_confirmation"]:
@@ -525,3 +532,6 @@ class Finished(GameState):
         if all(not player_status["waiting_confirmation"]
                for player_status in self.player_status.values()):
             self.game.current_state = self.get_next_state()
+
+    def get_next_state(self):
+        return "Speaking"

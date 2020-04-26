@@ -20,6 +20,7 @@ class Game:
         self.packet = Packet()
         self.visited_states = set()
         self._current_state = "Waiting Room"
+        self.turn_number = 1
 
         self.states = {
             "Waiting Room": WaitingRoom(self),
@@ -33,6 +34,9 @@ class Game:
         }
 
         self.states[self.current_state].on_entry()
+
+    def reset_packet(self):
+        self.packet = Packet()
 
     @property
     def current_state(self):
@@ -51,6 +55,7 @@ class Game:
             "players": [],
             "teams": [],
             "current_state": self.current_state,
+            "turn_number": self.turn_number,
         }
 
         for player in self.player_manager.get_all_players_team_ordered():
@@ -63,7 +68,9 @@ class Game:
         for team in self.player_manager.teams:
             data["teams"].append({
                 "team_id": team.team_id + 1,
-                "players": [player.public_id for player in team]
+                "players": [player.public_id for player in team],
+                "score": team.score,
+                "games": team.games,
             })
 
         for state in self.visited_states:
@@ -86,6 +93,8 @@ class Game:
             return {"status": "WrongPlayer"}
         except ForbiddenActionException:
             return {"status": "Forbidden"}
+        except TeamWonException:
+            self.current_state = "Finished"
         else:
             if old_state != self.current_state:
                 self.states[old_state].on_exit()

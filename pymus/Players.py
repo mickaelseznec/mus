@@ -27,6 +27,9 @@ class Player:
             self._cards[index] = packet.exchange(self._cards[index])
         self._cards = sorted(self._cards)
 
+    def debug_card_setter(self, cards):
+        self._cards = cards
+
     def get_cards(self):
         return self._cards
 
@@ -39,6 +42,7 @@ class Team(UserList):
         self.team_id = team_id
         self.data = []
         self.score = 0
+        self.games = 0
 
 
 class PlayerManager:
@@ -123,6 +127,12 @@ class PlayerManager:
         if self.teams[team_id].score >= self.max_score:
             self.teams[team_id].score = self.max_score
             raise TeamWonException
+
+    def get_winner_team(self):
+        for team in self.teams:
+            if team.score >= self.max_score:
+                return team
+        return None
 
     def is_finished(self):
         return any(team.score >= self.max_score for team in self.teams)

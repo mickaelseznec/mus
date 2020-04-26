@@ -1,11 +1,13 @@
 import json
 import sys
 sys.path.append("pymus")
-
 import itertools as it
 import unittest
 
+from pprint import pprint
+
 import PyMus as mus
+
 from PyMus import Game, Card, Team, PlayerManager
 
 class TestGame:
@@ -45,15 +47,20 @@ class TestGame:
 
     def go_through_betstate(self):
         status = self.game.status()
-        # from pprint import pprint;
-        # pprint(status)
-        # import ipdb; ipdb.set_trace()
         if status[status["current_state"]].get("IsSkipped", False):
             for player in (self.player_1, self.player_2, self.player_3, self.player_4):
                 self.unwrap(self.game.do(("confirm", {"player_id": player})))
         else:
             self.unwrap(self.game.do(("imido", {"player_id": self.player_speaking()})))
             self.unwrap(self.game.do(("iduki", {"player_id": self.player_speaking()})))
+
+    def go_through_finished(self):
+        for player in (self.player_1, self.player_2, self.player_3, self.player_4):
+            self.unwrap(self.game.do(("confirm", {"player_id": player})))
+
+    def set_hands(self, hands):
+        for player, hand in zip((self.player_1, self.player_2, self.player_3, self.player_4), hands):
+            self.game.player_manager.get_player_by_id(player).debug_card_setter(hand)
 
 
 class TestWaitingRoom(unittest.TestCase, TestGame):
@@ -226,21 +233,44 @@ class TestHandia(unittest.TestCase, TestGame):
         self.game = Game()
         self.register_four_player()
         self.unwrap(self.game.do(("start_game", {"player_id": self.player_1})))
+
+    def advance_to_haundia(self):
         self.go_through_speaking()
 
+    def advance_to_finished(self):
+        self.go_through_betstate()
+        self.go_through_betstate()
+        self.go_through_betstate()
+
     def test_all_paso(self):
+        self.advance_to_haundia()
+
         self.unwrap(self.game.do(("paso", {"player_id": self.player_1})))
         self.unwrap(self.game.do(("paso", {"player_id": self.player_2})))
         self.unwrap(self.game.do(("paso", {"player_id": self.player_3})))
-        _, state = self.unwrap(self.game.do(("paso", {"player_id": self.player_4})))
+        _, status = self.unwrap(self.game.do(("paso", {"player_id": self.player_4})))
 
-        self.assertEqual(state["current_state"], "Tipia")
+        # import ipdb; ipdb.set_trace()
+
+        self.assertEqual(status['Haundia']['Bid'], 1)
+        self.assertEqual(status['Haundia']['BidDiffered'], True)
+        self.assertEqual(status["current_state"], "Tipia")
+
+        self.advance_to_finished()
+
+        status = self.game.status()
+        import ipdb; ipdb.set_trace()
 
     def test_paso_imido_iduki(self):
+        self.advance_to_haundia()
+
         self.unwrap(self.game.do(("paso", {"player_id": self.player_1})))
         self.unwrap(self.game.do(("paso", {"player_id": self.player_2})))
         self.unwrap(self.game.do(("imido", {"player_id": self.player_3})))
         _, state = self.unwrap(self.game.do(("iduki", {"player_id": self.player_4})))
+
+        self.assertEqual(state['Haundia']['Bid'], 2)
+        self.assertEqual(state['Haundia']['BidDiffered'], True)
 
         self.assertEqual(state["current_state"], "Tipia")
 
@@ -408,6 +438,23 @@ class TestJokua(unittest.TestCase, TestGame):
 
     def test_paso_imido_iduki(self):
         self.go_through_betstate()
+        ...
+
+
+class TestNextTurn(unittest.TestCase, TestGame):
+    def setUp(self):
+        self.game = Game()
+
+        self.register_four_player()
+        self.unwrap(self.game.do(("start_game", {"player_id": self.player_1})))
+        self.go_through_speaking()
+        self.go_through_betstate()
+        self.go_through_betstate()
+        self.go_through_betstate()
+        self.go_through_betstate()
+
+    def test_paso_imido_iduki(self):
+        self.go_through_finished()
         ...
 
 # class TestTwoPlayerJokua(unittest.TestCase):
