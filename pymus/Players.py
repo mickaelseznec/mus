@@ -107,7 +107,7 @@ class PlayerManager:
             self.echku_order.append(player_2)
 
     def step_echku_order(self):
-        self.echku_order.rotate()
+        self.echku_order.rotate(-1)
 
     def set_authorised_player(self, speaking_player):
         for player in self.get_all_players_echku_ordered():

@@ -145,6 +145,7 @@ class TestSpeaking(unittest.TestCase, TestGame):
         self.unwrap(self.game.do(("mus", {"player_id": self.player_2})))
         self.assertState("Trading")
 
+
 class TestTrading(unittest.TestCase, TestGame):
 
     def setUp(self):
@@ -227,6 +228,7 @@ class TestTrading(unittest.TestCase, TestGame):
              for old_card in [old_player_cards[self.player_4][i] for i in (0, )]]))
         self.assertTrue(all([old_card in new_player_cards[self.player_4]
              for old_card in [old_player_cards[self.player_4][i] for i in (1, 2, 3)]]))
+
 
 class TestHandia(unittest.TestCase, TestGame):
     def setUp(self):
@@ -569,20 +571,63 @@ class TestPariak(unittest.TestCase, TestGame):
                          dic["player_id"] == self.player_4_public)
             self.assertEqual(dic["can_speak"], can_speak)
 
+
 class TestJokua(unittest.TestCase, TestGame):
     def setUp(self):
         self.game = Game()
 
         self.register_four_player()
         self.unwrap(self.game.do(("start_game", {"player_id": self.player_1})))
+
+    def advance_to_test_state(self):
         self.go_through_speaking()
         self.go_through_betstate()
         self.go_through_betstate()
         self.go_through_betstate()
 
-    def test_paso_imido_iduki(self):
-        self.go_through_betstate()
+    def advance_to_finished(self):
         ...
+
+    def test_puntua(self):
+        self.set_hands([
+            [Card(2, 'Oros'), Card(3, 'Bastos'), Card(10, 'Oros'), Card(12, 'Bastos')],
+            [Card(1, 'Oros'), Card(4, 'Bastos'), Card(10, 'Oros'), Card(12, 'Bastos')],
+            [Card(1, 'Oros'), Card(5, 'Bastos'), Card(10, 'Oros'), Card(11, 'Bastos')],
+            [Card(1, 'Oros'), Card(6, 'Bastos'), Card(10, 'Oros'), Card(11, 'Bastos')]
+        ])
+        self.advance_to_test_state()
+
+        status = self.game.status()
+        self.assertEqual(status['Jokua']['IsSkipped'], False)
+        self.assertEqual(status['Jokua']['Bid'], 1)
+        map(self.assertFalse, status['Jokua']['PlayerHasIt'].keys())
+
+        self.unwrap(self.game.do(("imido", {"player_id": self.player_1})))
+        self.unwrap(self.game.do(("iduki", {"player_id": self.player_2})))
+
+        status = self.game.status()
+        self.assertEqual(status['Jokua']['IsSkipped'], False)
+        self.assertEqual(next(iter(status['Jokua']['Bonus'].values())), 1)
+
+    def test_jokua_with_bonus(self):
+        self.set_hands([
+            [Card(2, 'Oros'), Card(3, 'Bastos'), Card(10, 'Oros'), Card(12, 'Bastos')],
+            [Card(4, 'Oros'), Card(10, 'Bastos'), Card(10, 'Oros'), Card(12, 'Bastos')],
+            [Card(1, 'Oros'), Card(10, 'Bastos'), Card(10, 'Oros'), Card(11, 'Bastos')],
+            [Card(7, 'Oros'), Card(7, 'Bastos'), Card(11, 'Oros'), Card(11, 'Bastos')]
+        ])
+        self.advance_to_test_state()
+
+        status = self.game.status()
+        self.assertEqual(status['Jokua']['IsSkipped'], False)
+        self.assertEqual(status['Jokua']['Bid'], 1)
+
+        self.unwrap(self.game.do(("imido", {"player_id": self.player_2})))
+        self.unwrap(self.game.do(("tira", {"player_id": self.player_3})))
+
+        status = self.game.status()
+        self.assertEqual(status['Jokua']['Bonus'], {self.player_2_public: 2,
+                                                    self.player_4_public: 2})
 
 
 class TestNextTurn(unittest.TestCase, TestGame):
@@ -599,7 +644,17 @@ class TestNextTurn(unittest.TestCase, TestGame):
 
     def test_paso_imido_iduki(self):
         self.go_through_finished()
-        ...
+
+        self.assertState("Speaking")
+        status = self.game.status()
+
+        self.assertTrue("Haundia" not in status)
+        self.assertTrue("Tipia" not in status)
+        self.assertTrue("Pariak" not in status)
+        self.assertTrue("Jokua" not in status)
+        self.assertTrue("Finished" not in status)
+
+        self.assertEqual(status["echku_order"], [1, 2, 3, 0])
 
 if __name__ == '__main__':
     unittest.main()

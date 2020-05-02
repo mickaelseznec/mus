@@ -439,7 +439,7 @@ class Pariak(BetState):
                           player in self.player_manager.get_all_players_echku_ordered()}
 
     def compute_bonus_points(self):
-        if self.is_skipped() or self.was_engaged:
+        if self.is_skipped() or not self.no_bid:
             winner_team = self.get_winner_team()
             self.bonus_points = {player: PariakHand(player.get_cards()).bonus
                                  for player in self.player_manager.get_team_players(winner_team)}
@@ -461,10 +461,14 @@ class Jokua(BetState):
                               for player in self.player_manager.get_all_players_echku_ordered()}
 
     def compute_bonus_points(self):
-        if self.is_skipped() or self.was_engaged:
+        if self.is_skipped() or not self.no_bid:
             winner_team = self.get_winner_team()
-            self.bonus_points = {player: JokuaHand(player.get_cards()).bonus
-                                 for player in self.player_manager.get_team_players(winner_team)}
+            if self._is_real_game():
+                self.bonus_points = {player: JokuaHand(player.get_cards()).bonus
+                                    for player in self.player_manager.get_team_players(winner_team)}
+            else:
+                team_representant = self.player_manager.get_team_players(winner_team)[0]
+                self.bonus_points = {team_representant: 1}
 
     def player_has_it(self):
         return {player.public_id: JokuaHand(player.get_cards()).is_special
@@ -548,4 +552,5 @@ class Finished(GameState):
             self.game.current_state = self.get_next_state()
 
     def get_next_state(self):
+        self.game.clean_visited_states()
         return "Speaking"

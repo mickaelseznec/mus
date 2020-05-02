@@ -47,6 +47,9 @@ class Game:
         self.visited_states.add(value)
         self._current_state = value
 
+    def clean_visited_states(self):
+        self.visited_states = set()
+
     def record_scores(self):
         pass
 
