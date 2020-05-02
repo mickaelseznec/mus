@@ -262,20 +262,20 @@ class BetState(GameState, ABC):
     def reset_attributes(self):
         self.player_status = {player.player_id: {"waiting_confirmation": True, "is_paso": False}
                               for player in self.player_manager.get_all_players_echku_ordered()}
-        self.winner = None
-        if self.is_skipped():
-            self.bid = 0
-            if any(attends for attends in self.attendees.values()):
-                self.compute_winner_team()
-        else:
-            self.bid = 1
+        self._winner_team = None
         self.offer = 0
         self.bonus_points = {}
         self.was_engaged = False
         self.differed_bid = False
         self.no_bid = True
         self.under_hordago = False
-        self._winner_team = None
+
+        if self.is_skipped():
+            self.bid = 0
+            if any(attends for attends in self.attendees.values()):
+                self.compute_winner_team()
+        else:
+            self.bid = 1
 
     def public_representation(self):
         representation =  {"Bid": self.bid, "Offer": self.offer, "BidDiffered": self.differed_bid,
