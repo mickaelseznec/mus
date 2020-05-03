@@ -752,6 +752,5 @@ class TestFinishing(unittest.TestCase, TestGame):
         self.assertState("Speaking")
 
 
-
 if __name__ == '__main__':
     unittest.main()
