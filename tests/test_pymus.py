@@ -656,5 +656,102 @@ class TestNextTurn(unittest.TestCase, TestGame):
 
         self.assertEqual(status["echku_order"], [1, 2, 3, 0])
 
+
+class TestFinishing(unittest.TestCase, TestGame):
+    def setUp(self):
+        self.game = Game()
+
+        self.register_four_player()
+        self.unwrap(self.game.do(("start_game", {"player_id": self.player_1})))
+
+    def test_finish_right_order_tira(self):
+        self.set_hands([
+            [Card(2, 'Oros'), Card(3, 'Bastos'), Card(10, 'Oros'), Card(12, 'Bastos')],
+            [Card(4, 'Oros'), Card(10, 'Bastos'), Card(11, 'Oros'), Card(12, 'Bastos')],
+            [Card(1, 'Oros'), Card(10, 'Bastos'), Card(10, 'Oros'), Card(11, 'Bastos')],
+            [Card(7, 'Oros'), Card(7, 'Bastos'), Card(11, 'Oros'), Card(11, 'Bastos')]
+        ])
+
+        self.game.player_manager.teams[0].score = 39
+        self.game.player_manager.teams[1].score = 38
+
+        self.go_through_speaking()
+
+        self.unwrap(self.game.do(("imido", {"player_id": self.player_1})))
+        self.unwrap(self.game.do(("iduki", {"player_id": self.player_2})))
+
+        self.unwrap(self.game.do(("imido", {"player_id": self.player_1})))
+        self.unwrap(self.game.do(("tira", {"player_id": self.player_2})))
+
+        status = self.game.status()
+
+        self.assertState("Finished")
+        self.assertEqual(status["game_over"], True)
+        self.assertEqual(status["winner"], 0)
+
+    def test_finish_right_order_iduki(self):
+        self.set_hands([
+            [Card(2, 'Oros'), Card(3, 'Bastos'), Card(10, 'Oros'), Card(12, 'Bastos')],
+            [Card(1, 'Oros'), Card(10, 'Bastos'), Card(10, 'Oros'), Card(11, 'Bastos')],
+            [Card(4, 'Oros'), Card(10, 'Bastos'), Card(11, 'Oros'), Card(12, 'Bastos')],
+            [Card(7, 'Oros'), Card(7, 'Bastos'), Card(11, 'Oros'), Card(11, 'Bastos')]
+        ])
+
+        self.game.player_manager.teams[0].score = 39
+        self.game.player_manager.teams[1].score = 38
+
+        self.go_through_speaking()
+
+        self.unwrap(self.game.do(("paso", {"player_id": self.player_1})))
+        self.unwrap(self.game.do(("imido", {"player_id": self.player_2})))
+        self.unwrap(self.game.do(("tira", {"player_id": self.player_1})))
+
+        self.unwrap(self.game.do(("imido", {"player_id": self.player_1})))
+        self.unwrap(self.game.do(("iduki", {"player_id": self.player_2})))
+
+        self.go_through_betstate()
+        self.go_through_betstate()
+
+        status = self.game.status()
+
+        self.assertState("Finished")
+
+        self.assertEqual(status["game_over"], True)
+        self.assertEqual(status["winner"], 1)
+
+    def test_finish_and_restart(self):
+        self.set_hands([
+            [Card(2, 'Oros'), Card(3, 'Bastos'), Card(10, 'Oros'), Card(12, 'Bastos')],
+            [Card(1, 'Oros'), Card(10, 'Bastos'), Card(10, 'Oros'), Card(11, 'Bastos')],
+            [Card(4, 'Oros'), Card(10, 'Bastos'), Card(11, 'Oros'), Card(12, 'Bastos')],
+            [Card(7, 'Oros'), Card(7, 'Bastos'), Card(11, 'Oros'), Card(11, 'Bastos')]
+        ])
+
+        self.game.player_manager.teams[0].score = 39
+        self.game.player_manager.teams[1].score = 38
+
+        self.go_through_speaking()
+
+        self.unwrap(self.game.do(("paso", {"player_id": self.player_1})))
+        self.unwrap(self.game.do(("imido", {"player_id": self.player_2})))
+        self.unwrap(self.game.do(("tira", {"player_id": self.player_1})))
+
+        self.unwrap(self.game.do(("imido", {"player_id": self.player_1})))
+        self.unwrap(self.game.do(("iduki", {"player_id": self.player_2})))
+
+        self.go_through_betstate()
+        self.go_through_betstate()
+
+        status = self.game.status()
+
+        self.assertState("Finished")
+        self.assertEqual(status["game_over"], True)
+        self.assertEqual(status["winner"], 1)
+
+        self.go_through_finished()
+        self.assertState("Speaking")
+
+
+
 if __name__ == '__main__':
     unittest.main()

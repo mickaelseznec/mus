@@ -128,10 +128,14 @@ class PlayerManager:
             self.teams[team_id].score = self.max_score
             raise TeamWonException
 
-    def get_winner_team(self):
+    def reset_team_scores(self):
+        for team in self.teams:
+            team.score = 0
+
+    def get_winner(self):
         for team in self.teams:
             if team.score >= self.max_score:
-                return team
+                return team.team_id
         return None
 
     def is_finished(self):

@@ -539,7 +539,7 @@ class Finished(GameState):
                 self.game.states[state].distribute_bonus_points()
 
         except TeamWonException:
-            ...
+            self.game.set_game_finished()
 
     def handle_confirm(self, player_id):
         if not self.player_status[player_id]["waiting_confirmation"]:
@@ -549,8 +549,8 @@ class Finished(GameState):
 
         if all(not player_status["waiting_confirmation"]
                for player_status in self.player_status.values()):
+            self.game.prepare_next_turn()
             self.game.current_state = self.get_next_state()
 
     def get_next_state(self):
-        self.game.clean_visited_states()
         return "Speaking"

@@ -21,6 +21,8 @@ class Game:
         self.visited_states = set()
         self._current_state = "Waiting Room"
         self.turn_number = 1
+        self.finished = False
+        self.winner = None
 
         self.states = {
             "Waiting Room": WaitingRoom(self),
@@ -47,8 +49,20 @@ class Game:
         self.visited_states.add(value)
         self._current_state = value
 
-    def clean_visited_states(self):
+    def prepare_next_turn(self):
         self.visited_states = set()
+
+        if self.finished:
+            self.finished = False
+            self.turn_number = 1
+            self.winner = None
+            self.player_manager.reset_team_scores()
+        else:
+            self.turn_number += 1
+
+    def set_game_finished(self):
+        self.finished = True
+        self.winner = self.player_manager.get_winner()
 
     def record_scores(self):
         pass
@@ -59,6 +73,8 @@ class Game:
             "teams": [],
             "current_state": self.current_state,
             "turn_number": self.turn_number,
+            "game_over": self.finished,
+            "winner": self.winner,
         }
 
         for player in self.player_manager.get_all_players_team_ordered():
@@ -90,6 +106,8 @@ class Game:
 
         old_state = self.current_state
 
+        answer = None
+
         try:
             answer = self.states[self.current_state].run(action, **kwargs)
         except WrongPlayerException:
@@ -98,9 +116,10 @@ class Game:
             return {"status": "Forbidden"}
         except TeamWonException:
             self.current_state = "Finished"
-        else:
-            if old_state != self.current_state:
-                self.states[old_state].on_exit()
-                self.states[self.current_state].on_entry()
+            self.set_game_finished()
 
-            return {"status": "OK", "result": answer, "state": self.status()}
+        if old_state != self.current_state:
+            self.states[old_state].on_exit()
+            self.states[self.current_state].on_entry()
+
+        return {"status": "OK", "result": answer, "state": self.status()}
