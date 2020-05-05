@@ -3,6 +3,7 @@ import pickle
 import pika
 import redis
 import json
+import time
 
 from PyMus import Game
 
@@ -42,9 +43,16 @@ class MessageQueueServer:
         game_id = kwargs.pop("game_id")
 
         if action == "register":
+            game = get_game(game_id)
+            game_status = game.status()
+
             self.channel.exchange_declare(exchange=game_id, exchange_type='fanout')
             print("Registering {} to exchange {}".format(properties.reply_to, game_id))
             self.channel.queue_bind(exchange=game_id, queue=properties.reply_to)
+
+            self.channel.basic_publish(exchange='',
+                                       routing_key=properties.reply_to,
+                                       body=json.dumps(game_status))
         else:
             game = get_game(game_id)
             game_answer = game.do((action, kwargs))
@@ -61,7 +69,7 @@ class MessageQueueServer:
                                                routing_key=properties.reply_to,
                                                body=json.dumps(result))
 
-                self.channel.basic_publish(exchange=game_id, routing_key='', body=json.dumps(game_status))
+                    self.channel.basic_publish(exchange=game_id, routing_key='', body=json.dumps(game_status))
 
 
 def main():

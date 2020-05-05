@@ -1,79 +1,91 @@
 #! /usr/bin/env python3
 import json
+import multiprocessing
+import os
 import pika
-import threading
-import time
 import urwid
-import uuid
-
-def handle_answer(ch, method, properties, body):
-    action, kwargs = json.loads(body)
-    print(" [x] Received '{}' with args: {}".format(action, kwargs))
 
 
-def receiver(result_queue_name):
-    print("Start receiver thread")
-    connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
-    channel = connection.channel()
-    channel.queue_declare(queue='welcome')
+class ReceptionProcess(multiprocessing.Process):
+    def __init__(self, incoming_channel_name, signal_pipe):
+        super().__init__(name="reception_process")
+        self.incoming_channel_name = incoming_channel_name
+        self.signal_pipe = signal_pipe
 
-    channel.basic_consume(queue=result_queue_name,
-                          on_message_callback=handle_answer,
-                          auto_ack=True)
-    channel.start_consuming()
+    def run(self):
+        connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+        channel = connection.channel()
 
-def sender(channel, result_queue_name):
+        channel.basic_consume(queue=self.incoming_channel_name,
+                              on_message_callback=self.handle_answer,
+                              auto_ack=True)
+        channel.start_consuming()
 
-    while True:
-        time.sleep(2)
+    def handle_answer(self, ch, method, properties, body):
+        answer = json.loads(body)
+        print(" [x] Received {}".format(answer))
+        os.write(self.signal_pipe, b"1")
 
-        channel.basic_publish(exchange='', routing_key='welcome',
-                              properties=pika.BasicProperties(reply_to=result_queue_name),
-                              body=json.dumps(("prout", {"game_id": "lemusdesbgs"})))
-        print("Sending a prout...")
 
-def exit_on_q(key):
-    if key in ('q', 'Q'):
-        raise urwid.ExitMainLoop()
+class QuestionBox(urwid.Edit):
+    def __init__(self, *args, on_user_validation, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.on_user_validation = on_user_validation
 
-class QuestionBox(urwid.Filler):
     def keypress(self, size, key):
         if key != 'enter':
-            return super(QuestionBox, self).keypress(size, key)
-        self.original_widget = urwid.Text(
-            u"Nice to meet you, %s.\n\nPress Q to exit." %
-            self.original_widget.edit_text)
+            return super().keypress(size, key)
+
+        self.on_user_validation(self.edit_text)
+        self.edit_text = ""
+
+
+class UrwidTUI:
+    def __init__(self):
+        header = urwid.Text("pymus client")
+        footer = urwid.Divider()
+
+        self.body = urwid.ListBox(
+            [QuestionBox("Pleaser enter the room name\n", on_user_validation=self._join_room)])
+
+        self.frame = urwid.Frame(self.body, header, footer)
+
+        self.loop = urwid.MainLoop(self.frame, unhandled_input=self._exit_on_q)
+        self.callback_pipe = self.loop.watch_pipe(handle_new_data_from_server)
+
+    def start(self):
+        connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+        self.channel = connection.channel()
+        self.channel.queue_declare(queue='welcome')
+
+        incoming_channel = self.channel.queue_declare(queue='')
+        self.incoming_channel_name = incoming_channel.method.queue
+
+        self.reception_process = ReceptionProcess(self.incoming_channel_name, self.callback_pipe)
+        self.reception_process.start()
+
+        self.loop.run()
+
+        self.reception_process.kill()
+        self.reception_process.join()
+
+    def _exit_on_q(self, key):
+        if key in ('q', 'Q'):
+            raise urwid.ExitMainLoop()
+
+    def _join_room(self, text):
+        self.channel.basic_publish(
+            exchange='',
+            properties=pika.BasicProperties(reply_to=self.incoming_channel_name),
+            routing_key='welcome',
+            body=json.dumps(("register", {"game_id": text})))
+
+    def handle_new_data_from_server(self):
+        print("Triggered!")
+
 
 def main():
-    connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
-    channel = connection.channel()
-    channel.queue_declare(queue='welcome')
-
-    receive_channel = channel.queue_declare(queue='')
-    result_queue_name = receive_channel.method.queue
-
-    channel.basic_publish(exchange='',
-                          properties=pika.BasicProperties(reply_to=result_queue_name),
-                          routing_key='welcome',
-                          body=json.dumps(("register", {"game_id": "lemusdesbgs"})))
-
-    rec_thread = threading.Thread(target=receiver, args=(result_queue_name, ))
-    rec_thread.start()
-
-    edit = urwid.Edit(u"What is your name?\n")
-    fill = QuestionBox(edit)
-    loop = urwid.MainLoop(fill, unhandled_input=exit_on_q)
-    loop.run()
-
-    sender(channel, result_queue_name)
-
-    rec_thread.join()
-
-
-    # channel.basic_publish(exchange='',
-    #                       routing_key='welcome',
-    #                       properties=pika.BasicProperties(reply_to=result_queue_name),
-    #                       body=json.dumps(("join", {"game_id": "lemusdesbgs"})))
+    UrwidTUI().start()
 
 
 if __name__ == "__main__":
