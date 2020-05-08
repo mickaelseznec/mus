@@ -59,17 +59,21 @@ class MessageQueueServer:
             save_game(game_id, game)
 
             cmd_status = game_answer["status"]
-            if cmd_status != "ok":
+            if cmd_status != "OK":
                 print("Die with", cmd_status)
             else:
                 result, game_status = game_answer["result"], game_answer["state"]
+                print("Result: ", result)
 
                 if result is not None:
                     self.channel.basic_publish(exchange='',
+                                               properties=pika.BasicProperties(
+                                                   correlation_id=properties.correlation_id),
                                                routing_key=properties.reply_to,
                                                body=json.dumps(result))
 
-                    self.channel.basic_publish(exchange=game_id, routing_key='', body=json.dumps(game_status))
+                print("Status: ", game_status)
+                self.channel.basic_publish(exchange=game_id, routing_key='', body=json.dumps(game_status))
 
 
 def main():
