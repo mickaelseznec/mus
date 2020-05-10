@@ -3,7 +3,7 @@ import json
 from abc import ABC, abstractmethod
 from copy import deepcopy
 
-from Cards import Hand, HaundiaHand, TipiaHand, PariakHand, JokuaHand, JSONCardEncoder
+from Cards import Hand, HaundiaHand, TipiaHand, PariakHand, JokuaHand
 from Players import PlayerManager
 from MusExceptions import *
 
@@ -27,8 +27,7 @@ class GameState(ABC):
             raise ForbiddenActionException
 
         if action == "get_cards" and self.game.current_state != "Waiting Room":
-            return json.dumps(self.player_manager.get_player_by_id(player_id).get_cards(),
-                              cls=JSONCardEncoder)
+            return self.player_manager.get_player_by_id(player_id).get_cards_repr()
 
         if action not in self.available_actions():
             raise ForbiddenActionException
@@ -119,11 +118,11 @@ class WaitingRoom(GameState):
     def is_player_authorised(self, player_id):
         return True
 
-    def handle_add_player(self, team_id, player_id=None):
+    def handle_add_player(self, team_id, player_name, player_id=None):
         if team_id != 0 and team_id != 1:
             raise ForbiddenActionException("Invalid team team_id %d" % team_id)
 
-        return self.player_manager.add_player(player_id, team_id)
+        return self.player_manager.add_player(player_id, team_id, player_name)
 
     def handle_remove_player(self, **kwargs):
         player_id = kwargs["player_id"]
@@ -291,7 +290,7 @@ class BetState(GameState, ABC):
 
     def get_bonus_representation(self):
         if self.bonus_points:
-            return {player.public_id: bonus for player, bonus in self.bonus_points.items()}
+            return {player.player_name: bonus for player, bonus in self.bonus_points.items()}
         return None
 
     def player_has_it(self):
@@ -386,9 +385,8 @@ class BetState(GameState, ABC):
         self.game.current_state = "Finished"
 
     def handle_hordago(self, player_id):
-        self.engaged = True
+        self.handle_gehiago(player_id, self.game.max_score)
         self.under_hordago = True
-        self.handle_gehiago(self, player_id, Gmae.score_max)
 
     def handle_confirm(self, player_id):
         if not self.player_status[player_id]["waiting_confirmation"]:
@@ -435,7 +433,7 @@ class Pariak(BetState):
                           player in self.player_manager.get_all_players_echku_ordered()}
 
     def player_has_it(self):
-        return {player.public_id: PariakHand(player.get_cards()).is_special for
+        return {player.player_name: PariakHand(player.get_cards()).is_special for
                           player in self.player_manager.get_all_players_echku_ordered()}
 
     def compute_bonus_points(self):
@@ -471,7 +469,7 @@ class Jokua(BetState):
                 self.bonus_points = {team_representant: 1}
 
     def player_has_it(self):
-        return {player.public_id: JokuaHand(player.get_cards()).is_special
+        return {player.player_name: JokuaHand(player.get_cards()).is_special
                 for player in self.player_manager.get_all_players_echku_ordered()}
 
     def get_next_state(self):
@@ -497,8 +495,9 @@ class Finished(GameState):
 
     def public_representation(self):
         return {"RevealCards":
-                {player.public_id: [json.dumps(card, cls=JSONCardEncoder) for card in player.get_cards()]
-                 for player in self.player_manager.get_all_players_echku_ordered()}}
+                {player.player_name: player.get_cards_repr()
+                 for player in self.player_manager.get_all_players_echku_ordered()}
+                }
 
     def on_exit(self):
         self.game.reset_packet()

@@ -13,12 +13,12 @@ class TestPlayerManager(unittest.TestCase):
     def test_add_one_player(self):
         self.assertEqual(len(self.player_manager.teams[0]), 0)
 
-        player_id = self.player_manager.add_player(None, 0)
+        player_id = self.player_manager.add_player(None, 0, "Jean")
 
         self.assertEqual(len(self.player_manager.teams[0]), 1)
 
     def test_delete_player(self):
-        player_id = self.player_manager.add_player(None, 0)
+        player_id = self.player_manager.add_player(None, 0, "Jean")
         self.assertEqual(len(self.player_manager.teams[0]), 1)
 
         self.player_manager.remove_player(player_id[0])
@@ -28,10 +28,10 @@ class TestPlayerManager(unittest.TestCase):
         self.assertEqual(len(self.player_manager.teams[0]), 0)
         self.assertEqual(len(self.player_manager.teams[1]), 0)
 
-        player_id_1 = self.player_manager.add_player(None, 0)
-        player_id_2 = self.player_manager.add_player(None, 0)
-        player_id_3 = self.player_manager.add_player(None, 1)
-        player_id_4 = self.player_manager.add_player(None, 1)
+        player_id_1 = self.player_manager.add_player(None, 0, "Jean")
+        player_id_2 = self.player_manager.add_player(None, 0, "Jacques")
+        player_id_3 = self.player_manager.add_player(None, 1, "Julien")
+        player_id_4 = self.player_manager.add_player(None, 1, "Jeremy")
 
         self.assertEqual(len(self.player_manager.teams[0]), 2)
         self.assertEqual(len(self.player_manager.teams[1]), 2)
@@ -40,28 +40,28 @@ class TestPlayerManager(unittest.TestCase):
         self.assertEqual(len(player_id_list), len(set(player_id_list)))
 
     def test_cannot_exceed_two_per_team(self):
-        player_id_1 = self.player_manager.add_player(None, 0)
-        player_id_2 = self.player_manager.add_player(None, 0)
+        player_id_1 = self.player_manager.add_player(None, 0, "Jean")
+        player_id_2 = self.player_manager.add_player(None, 0, "Jacques")
 
         self.assertRaises(ForbiddenActionException,
-                          self.player_manager.add_player, None, 0)
+                          self.player_manager.add_player, None, 0, "Joris")
 
-        player_id_3 = self.player_manager.add_player(None, 1)
-        player_id_4 = self.player_manager.add_player(None, 1)
+        player_id_3 = self.player_manager.add_player(None, 1, "Jean")
+        player_id_4 = self.player_manager.add_player(None, 1, "Jacques")
 
-        self.player_manager.add_player(player_id_1[0], 0)
+        self.player_manager.add_player(player_id_1[0], 0, "Jean")
 
         self.assertRaises(ForbiddenActionException,
-                          self.player_manager.add_player, player_id_1[0], 1)
+                          self.player_manager.add_player, player_id_1[0], 1, "Jean")
 
     def test_change_teams(self):
-        player_id_1 = self.player_manager.add_player(None, 0)
-        player_id_2 = self.player_manager.add_player(None, 0)
+        player_id_1 = self.player_manager.add_player(None, 0, "Jean")
+        player_id_2 = self.player_manager.add_player(None, 0, "Jacques")
 
         self.assertEqual(len(self.player_manager.teams[0]), 2)
 
         player_id_1_save = player_id_1
-        player_id_1 = self.player_manager.add_player(player_id_1[0], 1)
+        player_id_1 = self.player_manager.add_player(player_id_1[0], 1, "Jean")
 
         self.assertEqual(player_id_1_save, player_id_1)
 

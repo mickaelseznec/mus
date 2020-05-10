@@ -6,8 +6,8 @@ from itertools import chain
 from MusExceptions import *
 
 class Player:
-    def __init__(self, player_id, public_id):
-        self.public_id = public_id
+    def __init__(self, player_id, player_name):
+        self.player_name = player_name
         self.player_id = player_id
         self.team_reference = None
         self.can_speak = False
@@ -33,8 +33,11 @@ class Player:
     def get_cards(self):
         return self._cards
 
+    def get_cards_repr(self):
+        return [(card.value, card.color) for card in self._cards.copy()]
+
     def __repr__(self):
-        return "Player(public_id={}, team_id={})".format(self.public_id, self.team_id)
+        return "Player(player_name={}, team_id={})".format(self.player_name, self.team_id)
 
 
 class Team(UserList):
@@ -49,7 +52,6 @@ class PlayerManager:
     def __init__(self, max_score=40):
         self.teams = (Team(0), Team(1))
         self.echku_order = deque()
-        self._id_counter = 0
         self.max_score = max_score
 
     @staticmethod
@@ -77,22 +79,22 @@ class PlayerManager:
         else:
             return None
 
-    def add_player(self, player_id, team_id):
+    def add_player(self, player_id, team_id, player_name):
         player = self.get_player_by_id(player_id)
 
         if player and player.team_id == team_id:
-            return player.player_id, player.public_id
+            return player.player_id, player.player_name
 
         if len(self.teams[team_id]) >= 2:
             raise ForbiddenActionException("Team %d already full" % team_id)
 
         if player is None:
-            player = self._create_new_player()
+            player = self._create_new_player(player_name)
         else:
             self._detach_player(player)
         self._attach_player(player, team_id)
 
-        return player.player_id, player.public_id
+        return player.player_id, player.player_name
 
     def remove_player(self, player_id):
         player = self.get_player_by_id(player_id)
@@ -141,12 +143,10 @@ class PlayerManager:
     def is_finished(self):
         return any(team.score >= self.max_score for team in self.teams)
 
-    def _create_new_player(self):
+    def _create_new_player(self, player_name):
         player_id = uuid.uuid4().hex
-        public_id = self._id_counter
-        self._id_counter += 1
 
-        return Player(player_id, public_id)
+        return Player(player_id, player_name)
 
     def _detach_player(self, player):
         player_team = player.team_reference

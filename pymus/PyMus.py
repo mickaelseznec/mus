@@ -6,7 +6,7 @@ from collections import UserList, deque
 from copy import deepcopy
 from itertools import chain
 
-from Cards import Card, Packet, Hand, HaundiaHand, TipiaHand, PariakHand, JokuaHand, JSONCardEncoder
+from Cards import Card, Packet, Hand, HaundiaHand, TipiaHand, PariakHand, JokuaHand
 from StateMachine import WaitingRoom, Speaking, Trading, Haundia, Tipia, Pariak, Jokua, Finished
 from Players import Team, PlayerManager
 from MusExceptions import *
@@ -69,8 +69,9 @@ class Game:
 
     def status(self):
         data = {
-            "players": [],
+            "players": {},
             "teams": [],
+            "number_of_player": len(self.player_manager.get_all_players_team_ordered()),
             "current_state": self.current_state,
             "turn_number": self.turn_number,
             "game_over": self.finished,
@@ -78,24 +79,21 @@ class Game:
         }
 
         for player in self.player_manager.get_all_players_team_ordered():
-            data["players"].append({
-                "player_id": player.public_id,
+            data["players"][player.player_name] = {
                 "team_id" : player.team_id,
                 "can_speak": self.states[self.current_state].is_player_authorised(player.player_id),
-            })
+            }
 
-        for team in self.player_manager.teams:
-            data["teams"].append({
-                "team_id": team.team_id,
-                "players": [player.public_id for player in team],
-                "score": team.score,
-                "games": team.games,
-            })
+        data["teams"] = [{
+            "players": [player.player_name for player in team],
+            "score": team.score,
+            "games": team.games,
+        } for team in self.player_manager.teams]
 
         for state in self.visited_states:
             data[state] = self.states[state].public_representation()
 
-        data["echku_order"] = [player.public_id
+        data["echku_order"] = [player.player_name
                                for player in self.player_manager.get_all_players_echku_ordered()]
 
         return data

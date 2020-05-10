@@ -22,10 +22,10 @@ class TestGame:
         self.assertEqual(self.game.status()["current_state"], state)
 
     def register_four_player(self):
-        player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 0})))
-        player_2, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        player_3, _ = self.unwrap(self.game.do(("add_player", {"team_id": 0})))
-        player_4, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 0, "player_name": "Jean"})))
+        player_2, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1, "player_name": "Jacques"})))
+        player_3, _ = self.unwrap(self.game.do(("add_player", {"team_id": 0, "player_name": "Julien"})))
+        player_4, _ = self.unwrap(self.game.do(("add_player", {"team_id": 1, "player_name": "Jeremy"})))
 
         self.player_1, self.player_1_public = player_1
         self.player_2, self.player_2_public = player_2
@@ -37,9 +37,9 @@ class TestGame:
 
     def player_speaking(self):
         status = self.game.status()
-        for player in status["players"]:
-            if player["can_speak"]:
-                return self.public_to_private[player["player_id"]]
+        for player, info in status["players"].items():
+            if info["can_speak"]:
+                return self.public_to_private[player]
         return None
 
     def go_through_speaking(self):
@@ -68,48 +68,62 @@ class TestWaitingRoom(unittest.TestCase, TestGame):
         self.game = Game()
 
     def test_add_players(self):
-        (player_1, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 0})))
-        (player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (player_1, _), _ = self.unwrap(self.game.do((
+            "add_player", {"team_id": 0, "player_name": "Jean"})))
+        (player_2, _), _ = self.unwrap(self.game.do((
+            "add_player", {"team_id": 1, "player_name": "Jacques"})))
 
-        (player_3, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 0})))
-        (player_4, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (player_3, _), _ = self.unwrap(self.game.do((
+            "add_player", {"team_id": 0, "player_name": "Julien"})))
+        (player_4, _), _ = self.unwrap(self.game.do((
+            "add_player", {"team_id": 1, "player_name": "Jeremy"})))
 
-        self.unwrap_fails(self.game.do(("add_player", {"team_id": 1})), "Forbidden")
+        self.unwrap_fails(self.game.do((
+            "add_player", {"team_id": 1, "player_name": "Norbert"})), "Forbidden")
 
     def test_add_same_player(self):
-        player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 0})))
+        player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 0, "player_name": "Jean"})))
         player_1_new, _ = self.unwrap(self.game.do((
-            "add_player", {"team_id": 0, "player_id": player_1[0]})))
+            "add_player", {"team_id": 0, "player_id": player_1[0], "player_name": "Jean"})))
 
         self.assertEqual(player_1, player_1_new)
 
     def test_remove_player(self):
-        player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 0})))
+        player_1, _ = self.unwrap(self.game.do(("add_player", {"team_id": 0, "player_name": "Jean"})))
 
         _, state = self.unwrap(self.game.do(("remove_player", {"player_id": player_1[0]})))
         self.assertTrue(player_1[1] not in (player["player_id"] for player in state["players"]))
 
     def test_start_with_two_players(self):
-        (player_1, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 0})))
-        (player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (player_1, _), _ = self.unwrap(self.game.do(("add_player",
+                                                     {"team_id": 0, "player_name": "Jean"})))
+        (player_2, _), _ = self.unwrap(self.game.do(("add_player",
+                                                     {"team_id": 1, "player_name": "Jacques"})))
 
         self.unwrap(self.game.do(("start_game", {"player_id": player_1})))
         self.assertState("Speaking")
 
     def test_cannot_start_with_three_players(self):
-        (player_1, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 0})))
-        (player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        (player_3, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 0})))
+        (player_1, _), _ = self.unwrap(self.game.do(("add_player",
+                                                     {"team_id": 0, "player_name": "Jean"})))
+        (player_2, _), _ = self.unwrap(self.game.do(("add_player",
+                                                     {"team_id": 1, "player_name": "Jacques"})))
+        (player_3, _), _ = self.unwrap(self.game.do(("add_player",
+                                                     {"team_id": 0, "player_name": "Jean"})))
 
         self.unwrap_fails(self.game.do(("start_game", {"player_id": player_1})), "Forbidden")
 
         self.assertState("Waiting Room")
 
     def test_start_with_four_players(self):
-        (player_1, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 0})))
-        (player_2, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
-        (player_3, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 0})))
-        (player_4, _), _ = self.unwrap(self.game.do(("add_player", {"team_id": 1})))
+        (player_1, _), _ = self.unwrap(self.game.do(("add_player",
+                                                     {"team_id": 0, "player_name": "Jean"})))
+        (player_2, _), _ = self.unwrap(self.game.do(("add_player",
+                                                     {"team_id": 1, "player_name": "Jacques"})))
+        (player_3, _), _ = self.unwrap(self.game.do(("add_player",
+                                                     {"team_id": 0, "player_name": "Joël"})))
+        (player_4, _), _ = self.unwrap(self.game.do(("add_player",
+                                                     {"team_id": 1, "player_name": "Julien"})))
 
         self.unwrap(self.game.do(("start_game", {"player_id": player_1})))
 
@@ -125,13 +139,12 @@ class TestSpeaking(unittest.TestCase, TestGame):
         self.assertState("Speaking")
 
     def test_who_can_speak(self):
-        player_can_speak = {player["player_id"]: player["can_speak"] for
-                         player in self.game.status()["players"]}
+        player_info = self.game.status()["players"]
 
-        self.assertTrue(player_can_speak[self.player_1_public])
-        self.assertTrue(player_can_speak[self.player_3_public])
-        self.assertFalse(player_can_speak[self.player_2_public])
-        self.assertFalse(player_can_speak[self.player_4_public])
+        self.assertTrue(player_info[self.player_1_public]["can_speak"])
+        self.assertTrue(player_info[self.player_3_public]["can_speak"])
+        self.assertFalse(player_info[self.player_2_public]["can_speak"])
+        self.assertFalse(player_info[self.player_4_public]["can_speak"])
 
         self.unwrap_fails(self.game.do(("mus", {"player_id": self.player_2})), "WrongPlayer")
         self.unwrap(self.game.do(("mus", {"player_id": self.player_1})))
@@ -186,9 +199,8 @@ class TestTrading(unittest.TestCase, TestGame):
     def test_change(self):
         old_player_cards = {}
         for player in (self.player_1, self.player_2, self.player_3, self.player_4):
-            old_player_cards[player] = json.loads(self.unwrap(self.game.do((
-                "get_cards", {"player_id": player})))[0])
-
+            raw_cards = self.unwrap(self.game.do(("get_cards", {"player_id": player})))[0]
+            old_player_cards[player] = [Card(*card) for card in raw_cards]
         self.unwrap(self.game.do(("change", {"player_id": self.player_1, "indices": [0, 1, 2, 3]})))
 
         self.unwrap(self.game.do(("change", {"player_id": self.player_1, "indices": [0, 1, 2, 3]})))
@@ -208,26 +220,36 @@ class TestTrading(unittest.TestCase, TestGame):
 
         new_player_cards = {}
         for player in (self.player_1, self.player_2, self.player_3, self.player_4):
-            new_player_cards[player] = json.loads(self.unwrap(self.game.do((
-                "get_cards", {"player_id": player})))[0])
+            raw_cards = self.unwrap(self.game.do(("get_cards", {"player_id": player})))[0]
+            new_player_cards[player] = [Card(*card) for card in raw_cards]
 
-        self.assertTrue(all([old_card not in new_player_cards[self.player_1]
-             for old_card in old_player_cards[self.player_1]]))
+        self.assertTrue(all([all(not old_card.is_same(new_card)
+                                 for new_card in new_player_cards[self.player_1])
+                             for old_card in old_player_cards[self.player_1]]))
 
-        self.assertTrue(all([old_card not in new_player_cards[self.player_2]
-             for old_card in [old_player_cards[self.player_2][i] for i in (0, 1)]]))
-        self.assertTrue(all([old_card in new_player_cards[self.player_2]
-             for old_card in [old_player_cards[self.player_2][i] for i in (2, 3)]]))
 
-        self.assertTrue(all([old_card not in new_player_cards[self.player_3]
-             for old_card in [old_player_cards[self.player_3][i] for i in (0, )]]))
-        self.assertTrue(all([old_card in new_player_cards[self.player_3]
-             for old_card in [old_player_cards[self.player_3][i] for i in (1, 2, 3)]]))
+        self.assertTrue(all([all(not old_card.is_same(new_card)
+                                 for new_card in new_player_cards[self.player_2])
+                             for old_card in old_player_cards[self.player_2][:2]]))
+        self.assertTrue(all([any(old_card.is_same(new_card)
+                                 for new_card in new_player_cards[self.player_2])
+                             for old_card in old_player_cards[self.player_2][2:]]))
 
-        self.assertTrue(all([old_card not in new_player_cards[self.player_4]
-             for old_card in [old_player_cards[self.player_4][i] for i in (0, )]]))
-        self.assertTrue(all([old_card in new_player_cards[self.player_4]
-             for old_card in [old_player_cards[self.player_4][i] for i in (1, 2, 3)]]))
+
+        self.assertTrue(all([all(not old_card.is_same(new_card)
+                                 for new_card in new_player_cards[self.player_3])
+                             for old_card in old_player_cards[self.player_3][:1]]))
+        self.assertTrue(all([any(old_card.is_same(new_card)
+                                 for new_card in new_player_cards[self.player_3])
+                             for old_card in old_player_cards[self.player_3][1:]]))
+
+
+        self.assertTrue(all([all(not old_card.is_same(new_card)
+                                 for new_card in new_player_cards[self.player_4])
+                             for old_card in old_player_cards[self.player_4][:1]]))
+        self.assertTrue(all([any(old_card.is_same(new_card)
+                                 for new_card in new_player_cards[self.player_4])
+                             for old_card in old_player_cards[self.player_4][1:]]))
 
 
 class TestHandia(unittest.TestCase, TestGame):
@@ -566,10 +588,9 @@ class TestPariak(unittest.TestCase, TestGame):
 
         status = self.game.status()
 
-        for dic in status["players"]:
-            can_speak = (dic["player_id"] == self.player_2_public or
-                         dic["player_id"] == self.player_4_public)
-            self.assertEqual(dic["can_speak"], can_speak)
+        for player, info in status["players"].items():
+            can_speak = (player == self.player_2_public or player == self.player_4_public)
+            self.assertEqual(info["can_speak"], can_speak)
 
 
 class TestJokua(unittest.TestCase, TestGame):
@@ -654,7 +675,7 @@ class TestNextTurn(unittest.TestCase, TestGame):
         self.assertTrue("Jokua" not in status)
         self.assertTrue("Finished" not in status)
 
-        self.assertEqual(status["echku_order"], [1, 2, 3, 0])
+        self.assertEqual(status["echku_order"], ['Jacques', 'Julien', 'Jeremy', 'Jean'])
 
 
 class TestFinishing(unittest.TestCase, TestGame):
