@@ -3,7 +3,6 @@ import uuid
 
 from abc import ABC, abstractmethod
 from collections import UserList, deque
-from copy import deepcopy
 from itertools import chain
 
 from Cards import Card, Packet, Hand, HaundiaHand, TipiaHand, PariakHand, JokuaHand
@@ -23,6 +22,7 @@ class Game:
         self.turn_number = 1
         self.finished = False
         self.winner = None
+        self.score_history = (0, 0)
 
         self.states = {
             "Waiting Room": WaitingRoom(self),
@@ -59,6 +59,7 @@ class Game:
             self.player_manager.reset_team_scores()
         else:
             self.turn_number += 1
+        self.score_history = tuple(team.score for team in self.player_manager.teams)
 
     def set_game_finished(self):
         self.finished = True
@@ -76,6 +77,7 @@ class Game:
             "turn_number": self.turn_number,
             "game_over": self.finished,
             "winner": self.winner,
+            "history": {}
         }
 
         for player in self.player_manager.get_all_players_team_ordered():
@@ -87,11 +89,13 @@ class Game:
         data["teams"] = [{
             "players": [player.player_name for player in team],
             "score": team.score,
+            "score_history": self.score_history[team.team_id],
             "games": team.games,
         } for team in self.player_manager.teams]
 
         for state in self.visited_states:
             data[state] = self.states[state].public_representation()
+            data["history"][state] = self.states[state].history
 
         data["echku_order"] = [player.player_name
                                for player in self.player_manager.get_all_players_echku_ordered()]
@@ -108,13 +112,13 @@ class Game:
 
         try:
             answer = self.states[self.current_state].run(action, **kwargs)
-        except WrongPlayerException:
-            return {"status": "WrongPlayer"}
-        except ForbiddenActionException:
-            return {"status": "Forbidden"}
         except TeamWonException:
             self.current_state = "Finished"
             self.set_game_finished()
+        except WrongPlayerException:
+            return {"status": "WrongPlayer"}
+        except:
+            return {"status": "Forbidden"}
 
         if old_state != self.current_state:
             self.states[old_state].on_exit()

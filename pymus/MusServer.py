@@ -46,8 +46,8 @@ class MessageQueueServer:
             game = get_game(game_id)
             game_status = game.status()
 
-            self.channel.exchange_declare(exchange=game_id, exchange_type='fanout')
             print("Registering {} to exchange {}".format(properties.reply_to, game_id))
+            self.channel.exchange_declare(exchange=game_id, exchange_type='fanout')
             self.channel.queue_bind(exchange=game_id, queue=properties.reply_to)
 
             self.channel.basic_publish(exchange='',

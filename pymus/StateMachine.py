@@ -2,6 +2,7 @@ import json
 
 from abc import ABC, abstractmethod
 from copy import deepcopy
+from functools import partial
 
 from Cards import Hand, HaundiaHand, TipiaHand, PariakHand, JokuaHand
 from Players import PlayerManager
@@ -42,6 +43,7 @@ class GameState(ABC):
 
     #Final
     def on_entry(self):
+        self.reset_history()
         self.set_attending()
         self.reset_attributes()
         self.initialize_authorizations()
@@ -84,6 +86,10 @@ class GameState(ABC):
         ...
 
     def record(self, action, **kwargs):
+        player_id = kwargs.pop("player_id")
+        public_name = self.player_manager.get_player_by_id(player_id).player_name
+        kwargs["player_name"] = public_name
+
         self.history.append((action, kwargs))
 
     def reset_history(self):
@@ -123,6 +129,9 @@ class WaitingRoom(GameState):
             raise ForbiddenActionException("Invalid team team_id %d" % team_id)
 
         return self.player_manager.add_player(player_id, team_id, player_name)
+
+    def record(self, action, **kwargs):
+        pass
 
     def handle_remove_player(self, **kwargs):
         player_id = kwargs["player_id"]
@@ -236,12 +245,20 @@ class BetState(GameState, ABC):
         self.handle_map = {
             "paso": self.handle_paso,
             "gehiago": self.handle_gehiago,
+            "imido": partial(self.handle_gehiago, offer=2),
             "iduki": self.handle_iduki,
             "tira": self.handle_tira,
             "hordago": self.handle_hordago,
             "kanta": self.handle_kanta,
-            "imido": self.handle_imido,
             "confirm": self.handle_confirm,
+
+            "bat": partial(self.handle_gehiago, offer=1),
+            "bi": partial(self.handle_gehiago, offer=2),
+            "hiru": partial(self.handle_gehiago, offer=3),
+            "lau": partial(self.handle_gehiago, offer=4),
+            "bost": partial(self.handle_gehiago, offer=5),
+            "sei": partial(self.handle_gehiago, offer=6),
+            "hamar": partial(self.handle_gehiago, offer=10),
         }
 
     def available_actions(self):
@@ -250,11 +267,11 @@ class BetState(GameState, ABC):
         if self.under_hordago:
             return ["kanta", "tira"]
 
-        actions = ["gehiago", "hordago"]
+        actions = ["gehiago", "hordago", "bi", "hiru", "lau", "bost", "sei", "hamar"]
         if self.no_bid:
             actions += ["paso", "imido"]
         else:
-            actions += ["tira", "iduki"]
+            actions += ["tira", "iduki", "bat"]
 
         return actions
 
@@ -363,9 +380,6 @@ class BetState(GameState, ABC):
         self.offer = offer
         self.player_manager.authorise_opposite_team(player.team_id)
 
-    def handle_imido(self, player_id):
-        return self.handle_gehiago(player_id, 2)
-
     def handle_tira(self, player_id):
         self.offer = 0
         winner_team = PlayerManager.get_opposite_team_id(
@@ -382,10 +396,14 @@ class BetState(GameState, ABC):
         self.game.current_state = self.get_next_state()
 
     def handle_kanta(self, player_id):
-        self.game.current_state = "Finished"
+        self.bid = self.offer
+        self.offer = 0
+
+        self.compute_winner_team()
+        self.distribute_bid_points()
 
     def handle_hordago(self, player_id):
-        self.handle_gehiago(player_id, self.game.max_score)
+        self.handle_gehiago(player_id, self.game.max_score - self.bid)
         self.under_hordago = True
 
     def handle_confirm(self, player_id):
@@ -429,6 +447,10 @@ class Tipia(BetState):
 
 class Pariak(BetState):
     def set_attending(self):
+        for player in self.player_manager.get_all_players_echku_ordered():
+            self.record("bai" if PariakHand(player.get_cards()).is_special else "ez",
+                        player_id=player.player_id)
+
         self.attendees = {player.player_id: PariakHand(player.get_cards()).is_special for
                           player in self.player_manager.get_all_players_echku_ordered()}
 
@@ -451,6 +473,10 @@ class Pariak(BetState):
 
 class Jokua(BetState):
     def set_attending(self):
+        for player in self.player_manager.get_all_players_echku_ordered():
+            self.record("bai" if JokuaHand(player.get_cards()).is_special else "ez",
+                        player_id=player.player_id)
+
         if self._is_real_game():
             self.attendees = {player.player_id: JokuaHand(player.get_cards()).is_special
                               for player in self.player_manager.get_all_players_echku_ordered()}

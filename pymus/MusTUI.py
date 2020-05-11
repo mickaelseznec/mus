@@ -5,8 +5,11 @@ import os
 import pika
 import urwid
 import uuid
+import queue
 
 from collections import deque
+from copy import deepcopy
+from pprint import pprint
 
 
 class ReceptionProcess(mp.Process):
@@ -27,7 +30,7 @@ class ReceptionProcess(mp.Process):
         answer = json.loads(body)
         self.callback_queue.put((answer, properties.correlation_id))
 
-        os.write(self.signal_pipe, b"1")
+        os.write(self.signal_pipe, b"0")
 
 
 class QuestionBox(urwid.Edit):
@@ -144,13 +147,34 @@ class UrwidTUI:
         self.frame.footer = urwid.Text("Connected to game {}, Turn: {}".format(
             self.game_id, answer['current_state']))
 
+        self.loop.draw_screen()
+
+    def format_history(self, history, skip_confirm=False):
+        history_strings = []
+        for line in history:
+            if skip_confirm and line[0] == "confirm":
+                continue
+
+            player = line[1].pop("player_name")
+            args = " ".join(str(arg) for arg in line[1].values())
+            history_strings.append("{} a dit : {} {}".format(player, line[0], args))
+        return "\n".join(history_strings)
+
     def get_history(self, answer):
+        current_state = answer["current_state"]
+
+        if current_state in answer:
+            answer_copy = deepcopy(answer)
+            answer_copy.pop(current_state)
+            answer = answer_copy
+
         history = [urwid.Text("Historique :\n")]
+
         if "Trading" in answer:
             state = urwid.Text("Échange :\n")
             history.append(state)
         if "Speaking" in answer:
-            state = urwid.Text("Début :\n")
+            state = urwid.Text("Début :\n" + self.format_history(answer["history"]["Speaking"]))
             history.append(state)
 
         fancy_states = {
@@ -165,10 +189,13 @@ class UrwidTUI:
                 text = fancy_states[state] + " :\n"
                 if answer[state]["IsSkipped"]:
                     text += "Pas de paris\n"
-                elif answer[state]["Winner"]:
-                    text += "Paris à {} points\n".format(answer[state]["Bid"])
+                else:
+                    text += "Paris à {} points. ".format(answer[state]["Bid"])
                 if answer[state]["Winner"]:
-                    text += "Remporté par l'équipe {}\n".format(answer[state]["Winner"])
+                    text += "-> équipe {} gagne\n".format(answer[state]["Winner"])
+                else:
+                    text += "\n"
+                text += self.format_history(answer["history"][state], True)
 
                 history.append(urwid.Text(text))
 
@@ -178,7 +205,7 @@ class UrwidTUI:
         state = answer["current_state"]
 
         if state == "Waiting Room":
-            return display_waiting_room(answer)
+            return self.display_waiting_room(answer)
 
         team_text = []
         for index, team in enumerate(answer["teams"]):
@@ -222,12 +249,13 @@ class UrwidTUI:
             state_text = urwid.Text(state_text)
             rows += (state_text, )
 
+        rows += (urwid.Text(self.format_history(answer["history"][state])), )
+
         return urwid.Pile(rows)
 
     def display_waiting_room(self, answer):
         columns = [0, 0]
-        for team in answer['teams']:
-            team_id = team['team_id']
+        for team_id, team in enumerate(answer['teams']):
 
             text = "Team #{}:\n".format(team_id + 1)
             for player in team['players']:
@@ -254,7 +282,6 @@ class UrwidTUI:
             kwargs["player_id"] = self.player_id
 
         properties_args = {"reply_to": self.incoming_channel_name}
-
 
         if cmd in self.intercepted_answer:
             correlation_id = str(uuid.uuid4())
